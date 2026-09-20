@@ -180,6 +180,11 @@ func managementRegistration() managementRegistrationResponse {
 			{Method: http.MethodGet, Path: base + "/keepalive/status", Description: "Last keepalive run summary + config."},
 			{Method: http.MethodGet, Path: base + "/overview", Description: "Aggregated panel overview: account health tiles, credits totals, accounts needing attention."},
 			{Method: http.MethodGet, Path: base + "/usage", Description: "Credit spend by model/day/client from official billing rows (query: days=1..31, default 7)."},
+			{Method: http.MethodGet, Path: base + "/requests", Description: "Request log from panel-recorded executors: model, status, TTFB, latency, tokens (query: limit=1..500)."},
+			{Method: http.MethodGet, Path: base + "/ledger", Description: "Credit acquisition ledger: balance increases from check-in, activity and travel."},
+			{Method: http.MethodGet, Path: base + "/tasks", Description: "Automated task history: check-in, keepalive and manual account state changes."},
+			{Method: http.MethodGet, Path: base + "/models", Description: "Full model catalog per account: display name, context window, reasoning tiers, credit multiplier, tags."},
+			{Method: http.MethodPost, Path: base + "/account/toggle", Description: "Temporarily disable or re-enable one account without deleting credentials (body: {auth_index, disabled})."},
 		},
 		Resources: []resourceRoute{
 			{Path: "/panel", Menu: "WorkBuddy", Description: "WorkBuddy dashboard: credits, check-in, plan, import."},
@@ -261,6 +266,21 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, buildOverviewFromAccounts(accounts, summary)))
 	case req.Method == http.MethodGet && path == base+"/usage":
 		status, payload := handleUsageQuery(req.ManagementRequest)
+		return okEnvelope(mgmtJSONResponse(status, payload))
+	case req.Method == http.MethodGet && path == base+"/requests":
+		status, payload := handleRequestsQuery(req.ManagementRequest)
+		return okEnvelope(mgmtJSONResponse(status, payload))
+	case req.Method == http.MethodGet && path == base+"/ledger":
+		status, payload := handleLedgerQuery(req.ManagementRequest)
+		return okEnvelope(mgmtJSONResponse(status, payload))
+	case req.Method == http.MethodGet && path == base+"/tasks":
+		status, payload := handleTasksQuery(req.ManagementRequest)
+		return okEnvelope(mgmtJSONResponse(status, payload))
+	case req.Method == http.MethodGet && path == base+"/models":
+		status, payload := handleModelCenter(req.ManagementRequest)
+		return okEnvelope(mgmtJSONResponse(status, payload))
+	case req.Method == http.MethodPost && path == base+"/account/toggle":
+		status, payload := handleAccountToggle(req.ManagementRequest)
 		return okEnvelope(mgmtJSONResponse(status, payload))
 	}
 	return okEnvelope(mgmtJSONResponse(http.StatusNotFound, map[string]any{"error": "not found: " + path}))
@@ -382,7 +402,8 @@ func mutatingManagementPath(path string) bool {
 		base + "/import",
 		base + "/trial",
 		base + "/select",
-		base + "/keepalive":
+		base + "/keepalive",
+		base + "/account/toggle":
 		return true
 	}
 	return false

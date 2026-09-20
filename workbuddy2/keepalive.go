@@ -288,6 +288,14 @@ func runTokenKeepaliveWithCallback(callbackID string) *keepaliveSummary {
 	}
 	wg.Wait()
 	recordKeepalive(sum)
+	// Panel task log: record outcomes that represent real work (a "skipped"
+	// row means the token was still fresh — not a task result worth logging).
+	for _, row := range sum.Results {
+		if row.Status == "skipped" {
+			continue
+		}
+		recordTask("keepalive", row.Nickname, row.Status == "refreshed", row.Detail)
+	}
 	return sum
 }
 

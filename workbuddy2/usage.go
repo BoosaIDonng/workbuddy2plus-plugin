@@ -18,10 +18,35 @@ func handleUsage(raw []byte) ([]byte, error) {
 	return okEnvelope(map[string]any{"forwarded": false})
 }
 
-// publishUsage is a no-op kept so the existing executor call sites stay
-// untouched. Previously it forwarded attempts to CPAMP; usage accounting now
-// lives entirely in the host.
+// publishUsage records one executor attempt into the panel request log
+// (model, status, TTFB, latency, tokens, account). It is called at every
+// executor outcome, so the chat path needs no extra branching. The previous
+// CPAMP forwarding was removed; this local record is the only consumer.
 func publishUsage(requestedModel, upstreamModel, authID string, started time.Time, detail usage.Detail, failed bool, statusCode int, errBody string) {
+	recordRequest(authID, requestedModel, upstreamModel, started, detail, failed, statusCode, errBody)
+}
+
+// hasAssistantText reports whether an SSE frame carries assistant-visible
+// text (content or reasoning_content). Role-only and usage-only frames return
+// false so TTFB reflects the first real token.
+func hasAssistantText(rawJSON string) bool {
+	var chunk struct {
+		Choices []struct {
+			Delta struct {
+				Content   string `json:"content"`
+				Reasoning string `json:"reasoning_content"`
+			} `json:"delta"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal([]byte(rawJSON), &chunk) != nil {
+		return false
+	}
+	for _, c := range chunk.Choices {
+		if c.Delta.Content != "" || c.Delta.Reasoning != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // intFromAny extracts a token count from the loosely-typed usage JSON.

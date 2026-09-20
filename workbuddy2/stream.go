@@ -123,6 +123,7 @@ func pumpUpstreamStream(httpReq *http.Request, cancel context.CancelFunc, stream
 	scanner := bufio.NewScanner(newHostStreamReader(stream))
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	validEvents := 0
+	firstTokenMarked := false
 	for scanner.Scan() {
 		content := stripDataPrefix(scanner.Text())
 		if content == "" {
@@ -138,6 +139,14 @@ func pumpUpstreamStream(httpReq *http.Request, cancel context.CancelFunc, stream
 		collector.feed(content)
 		if valid {
 			validEvents++
+		}
+		// TTFB: the first frame carrying assistant text (content or reasoning)
+		// is the client-visible first token. Role-only and usage-only frames
+		// are skipped so the measurement reflects upstream generation start.
+		// Keyed on authUID — the same identifier publishUsage passes as authID.
+		if !firstTokenMarked && hasAssistantText(content) {
+			noteFirstToken(authUID, upstreamModel, started)
+			firstTokenMarked = true
 		}
 		if sseFramed {
 			cleaned = "data: " + cleaned

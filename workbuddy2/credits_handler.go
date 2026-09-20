@@ -258,6 +258,16 @@ func handleCreditsQueryWithCallback(req pluginapi.ManagementRequest, callbackID 
 					ci = prev.checkin
 				}
 				plan, _ := acct["plan"].(string)
+				// Credit ledger: compare this real query against the previous
+				// snapshot and record any increase (covers check-in, activity
+				// and travel channels — upstream only logs travel rewards).
+				if cr != nil {
+					before := int64(0)
+					if prev != nil && prev.credits != nil {
+						before = prev.credits.TotalRemain
+					}
+					recordLedger(sa.Account.UID, sa.Account.Nickname, before, cr.TotalRemain, "credits-query")
+				}
 				accountCache.Store(f.ID, &accountCacheEntry{
 					checkin: ci, credits: cr, plan: plan, fetched: now,
 				})

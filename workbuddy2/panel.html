@@ -137,6 +137,25 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .recent-row{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
 .recent-row:last-child{border-bottom:none}
 .recent-time{color:var(--mut);font-variant-numeric:tabular-nums}
+/* trend chart (dependency-free SVG) */
+.trend-wrap{position:relative}
+.trend-svg{width:100%;height:180px;display:block;overflow:visible}
+.trend-grid{stroke:var(--border);stroke-width:1}
+.trend-area{fill:var(--acc-ring);opacity:.35}
+.trend-line{fill:none;stroke:var(--acc);stroke-width:2;stroke-linejoin:round}
+.trend-dot{fill:var(--acc)}
+.trend-axis{fill:var(--mut);font-size:10px}
+.trend-bar{fill:var(--acc)}
+/* log / task / model tables */
+.log-table{width:100%;border-collapse:collapse;font-size:12px}
+.log-table th{text-align:left;color:var(--mut);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+.log-table td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.log-table tr:last-child td{border-bottom:none}
+.log-table td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.status-ok{color:var(--ok)}.status-err{color:var(--err)}
+.expiry-ok{color:var(--ok)}.expiry-warn{color:var(--warn)}.expiry-err{color:var(--err)}
+.expiry-mut{color:var(--mut)}
+.expiry-block{margin-top:4px}
 .tabs{display:flex;gap:6px;margin:14px 0 4px;flex-wrap:wrap}
 .tab-btn{background:var(--surface);border:1px solid var(--border);color:var(--mut);border-radius:10px;padding:7px 16px;font-size:13px;cursor:pointer;font-weight:600}
 .tab-btn.active{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
@@ -223,24 +242,42 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     <button type="button" class="tab-btn active" data-tab="overview" onclick="switchTab('overview',this)">总览</button>
     <button type="button" class="tab-btn" data-tab="usage" onclick="switchTab('usage',this)">用量</button>
     <button type="button" class="tab-btn" data-tab="accounts" onclick="switchTab('accounts',this)">账号</button>
+    <button type="button" class="tab-btn" data-tab="logs" onclick="switchTab('logs',this)">请求日志</button>
+    <button type="button" class="tab-btn" data-tab="tasks" onclick="switchTab('tasks',this)">任务记录</button>
+    <button type="button" class="tab-btn" data-tab="models" onclick="switchTab('models',this)">模型中心</button>
     <button type="button" class="tab-btn" data-tab="settings" onclick="switchTab('settings',this)">设置</button>
   </div>
   <div class="tab-view" id="tab-usage">
-    <div class="wiz-actions" style="margin-bottom:10px">
-      <select id="usageDays" class="field-input" style="max-width:140px" aria-label="统计范围" onchange="loadUsage()">
+    <div class="action-row" style="margin-bottom:10px">
+      <select id="usageRangeMode" class="field-input" style="max-width:130px" aria-label="范围模式" onchange="onUsageRangeChange()">
+        <option value="preset" selected>预设范围</option>
+        <option value="custom">自定义区间</option>
+      </select>
+      <select id="usageDays" class="field-input" style="max-width:130px" aria-label="统计范围" onchange="loadUsage()">
         <option value="1">最近 1 天</option>
         <option value="7" selected>最近 7 天</option>
         <option value="14">最近 14 天</option>
         <option value="30">最近 30 天</option>
       </select>
+      <input type="date" id="usageFrom" class="field-input" style="max-width:160px;display:none" aria-label="开始日期" onchange="loadUsage()">
+      <input type="date" id="usageTo" class="field-input" style="max-width:160px;display:none" aria-label="结束日期" onchange="loadUsage()">
       <button class="sec" onclick="loadUsage(this)">刷新用量</button>
       <span class="toggle" id="usageMeta"></span>
     </div>
     <div class="ov-grid" id="usageTiles"></div>
+    <div class="card set-card">
+      <h3>趋势</h3>
+      <div class="action-row" style="margin:0 0 8px">
+        <select id="trendMetric" class="field-input" style="max-width:180px" aria-label="趋势指标" onchange="renderTrend()">
+          <option value="credit" selected>计费（积分）</option>
+          <option value="requests">请求数</option>
+        </select>
+      </div>
+      <div id="usageTrend" class="hint">加载中…</div>
+    </div>
     <div class="card set-card"><h3>模型积分分布</h3><div id="usageByModel" class="hint">加载中…</div></div>
-    <div class="card set-card"><h3>每日积分消耗</h3><div id="usageByDay" class="hint">加载中…</div></div>
     <div class="card set-card"><h3>客户端分布</h3><div id="usageByClient" class="hint">加载中…</div></div>
-    <div class="card set-card"><h3>最近请求</h3><div id="usageRecent" class="hint">加载中…</div></div>
+    <div class="card set-card"><h3>积分获得流水</h3><div id="usageLedger" class="hint">加载中…</div></div>
   </div>
   <div class="tab-view show" id="tab-overview">
     <div class="ov-grid" id="ovTiles"><div class="loading">加载中…</div></div>
@@ -271,6 +308,47 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
   </div>
   <div class="summary card" id="summaryBox" style="display:none"></div>
   <div id="grid" class="grid"><div class="loading">加载中…</div></div>
+  </div>
+  <div class="tab-view" id="tab-logs">
+    <div class="action-row" style="margin-bottom:10px">
+      <select id="logsLimit" class="field-input" style="max-width:130px" aria-label="条数" onchange="loadRequestLog()">
+        <option value="50">最近 50 条</option>
+        <option value="100" selected>最近 100 条</option>
+        <option value="300">最近 300 条</option>
+      </select>
+      <select id="logsFilter" class="field-input" style="max-width:130px" aria-label="状态筛选" onchange="renderRequestLog()">
+        <option value="all">全部状态</option>
+        <option value="failed">仅失败</option>
+        <option value="ok">仅成功</option>
+      </select>
+      <button class="sec" onclick="loadRequestLog(this)">刷新日志</button>
+      <span class="toggle" id="logsMeta"></span>
+    </div>
+    <div class="ov-grid" id="logsTiles"></div>
+    <div class="card set-card"><h3>请求明细</h3><div id="logsTable" class="hint">加载中…</div></div>
+  </div>
+  <div class="tab-view" id="tab-tasks">
+    <div class="action-row" style="margin-bottom:10px">
+      <select id="tasksLimit" class="field-input" style="max-width:130px" aria-label="条数" onchange="loadTaskLog()">
+        <option value="50" selected>最近 50 条</option>
+        <option value="200">最近 200 条</option>
+        <option value="500">最近 500 条</option>
+      </select>
+      <button class="sec" onclick="loadTaskLog(this)">刷新任务</button>
+      <button class="sec" onclick="runKeepaliveNow(this)">立即保活</button>
+      <span class="toggle" id="tasksMeta"></span>
+    </div>
+    <div class="ov-grid" id="tasksTiles"></div>
+    <div class="card set-card"><h3>执行明细</h3><div id="tasksTable" class="hint">加载中…</div></div>
+  </div>
+  <div class="tab-view" id="tab-models">
+    <div class="action-row" style="margin-bottom:10px">
+      <input id="modelsSearch" class="field-input" type="search" placeholder="搜索模型 ID / 名称 / 厂商" oninput="renderModelCenter()" aria-label="搜索模型">
+      <button class="sec" onclick="loadModelCenter(this)">刷新模型</button>
+      <span class="toggle" id="modelsMeta"></span>
+    </div>
+    <div class="ov-grid" id="modelsTiles"></div>
+    <div class="card set-card"><h3>模型列表</h3><div id="modelsTable" class="hint">加载中…</div></div>
   </div>
   <div class="tab-view" id="tab-settings">
     <div class="card set-card">
@@ -487,6 +565,11 @@ function bindCardActions(root){
       else if(act==="claim") claimTrial(idx, ev.currentTarget);
       else if(act==="select") selectAuth(idx, ev.currentTarget);
       else if(act==="refresh") refreshCredits(idx, ev.currentTarget);
+      else if(act==="toggle"){
+        const dis=ev.currentTarget.dataset.disabled==="true";
+        const a=(lastAccounts||[]).find(x=>x.auth_index===idx);
+        toggleAccount(idx, a&&(a.nickname||a.label), dis, ev.currentTarget);
+      }
     });
   });
 }
@@ -518,13 +601,18 @@ function card(a){
     ? `<button class="done" disabled="disabled">使用中</button>`
     : (disabled?``:`<button class="sec" data-action="select" data-auth-index="${esc(a.auth_index)}">选用</button>`);
   const refreshBtn=`<button class="sec" data-action="refresh" data-auth-index="${esc(a.auth_index)}" title="刷新积分">刷新</button>`;
+  // Manual shelf/restore: pull an account out of rotation without deleting it.
+  const toggleBtn=disabled
+    ? `<button class="sec" data-action="toggle" data-auth-index="${esc(a.auth_index)}" data-disabled="false" title="放回路由池">恢复</button>`
+    : `<button class="sec" data-action="toggle" data-auth-index="${esc(a.auth_index)}" data-disabled="true" title="摘出路由池（保留凭证）">停用</button>`;
   const badges=(selected?`<span class="badge" style="background:var(--acc-ring);color:var(--acc);border-color:var(--acc)">使用中</span>`:"")+(disabled?`<span class="badge disabled">已禁用</span>`:"")+(exhausted?`<span class="badge exhausted">耗尽</span>`:"")+regionBadge+`<span class="badge ${plan}">${esc(a.plan||"-")}</span>`;
   return `<div class="card${selected?" selected":""}" data-region="${region}" data-auth="${esc(a.auth_index)}">
   <h2>${esc(a.nickname||a.label||a.name)} <span style="display:flex;gap:6px;align-items:center">${badges}</span></h2>
   <div class="uid">${esc(a.uid||"")} · ${esc(a.name||"")}</div>
   ${progressHTML(cr)}
+  ${expiryHTML(cr)}
   ${a.error?`<div class="row"><span class="k">错误</span><span class="v err">${esc(a.error)}</span></div>`:""}
-  <div class="actions">${selectBtn}${refreshBtn}${actionHTML}</div>
+  <div class="actions">${selectBtn}${refreshBtn}${actionHTML}${toggleBtn}</div>
   </div>`;
 }
 let currentFilter="all";
@@ -1189,6 +1277,9 @@ function switchTab(name, btn){
   if(btn) btn.classList.add("active");
   if(name==="overview") loadOverview();
   if(name==="usage") loadUsage();
+  if(name==="logs") loadRequestLog();
+  if(name==="tasks") loadTaskLog();
+  if(name==="models") loadModelCenter();
   if(name==="settings") initSettings();
 }
 /* Overview: aggregated tiles + needs-attention list from GET /overview. */
@@ -1306,33 +1397,273 @@ function usageBarRows(rows, valFmt){
 }
 async function loadUsage(btn){
   if(btn) busy(btn,true);
-  const days=document.getElementById("usageDays").value||"7";
   try{
-    const d=await api("/usage?days="+encodeURIComponent(days));
+    const q=usageRangeQuery();
+    const d=await api("/usage?"+q);
     if(d.error){toast("用量加载失败","err",d.error);return}
+    usageCache=d;
     document.getElementById("usageMeta").textContent=d.accounts+" 个账号 · 共 "+d.total_count+" 次请求";
     document.getElementById("usageTiles").innerHTML=
       '<div class="ov-tile"><div class="k">积分消耗</div><div class="v">'+esc((d.total_credit||0).toFixed(2))+'</div></div>'+
       '<div class="ov-tile"><div class="k">请求数</div><div class="v">'+esc(String(d.total_count||0))+'</div></div>'+
       '<div class="ov-tile"><div class="k">模型数</div><div class="v">'+esc(String((d.by_model||[]).length))+'</div></div>'+
-      '<div class="ov-tile"><div class="k">统计天数</div><div class="v">'+esc(String(d.days||days))+'</div></div>';
+      '<div class="ov-tile"><div class="k">统计天数</div><div class="v">'+esc(String((d.by_day||[]).length))+'</div></div>';
+    renderTrend();
     const models=(d.by_model||[]).slice(0,10).map(m=>({label:m.model||"unknown",credit:m.credit,count:m.requests}));
     document.getElementById("usageByModel").innerHTML=models.length?
       usageBarRows(models,r=>r.credit.toFixed(2)+' 积分 · '+r.count+' 次'):"无数据";
-    const daysArr=(d.by_day||[]).map(x=>({label:x.day,credit:x.credit,count:x.count}));
-    document.getElementById("usageByDay").innerHTML=daysArr.length?
-      usageBarRows(daysArr,r=>r.credit.toFixed(2)+' 积分 · '+r.count+' 次'):"无数据";
     const clients=(d.by_client||[]).slice(0,10).map(c=>({label:c.client,credit:c.credit,count:c.requests}));
     document.getElementById("usageByClient").innerHTML=clients.length?
       usageBarRows(clients,r=>r.credit.toFixed(2)+' 积分 · '+r.count+' 次'):"无数据";
-    const recent=(d.recent||[]).map(r=>
-      '<div class="recent-row"><span class="recent-time">'+esc(r.requestTimeMs?new Date(r.requestTimeMs).toLocaleString():"-")+'</span>'+
-      '<span>'+esc(r.model||"unknown")+'</span><span>'+esc((r.credit||0).toFixed(2))+' 积分</span></div>');
-    document.getElementById("usageRecent").innerHTML=recent.length?recent.join(""):"无数据";
     if((d.errors||[]).length) toast("部分账号数据缺失","warn",d.errors.join("；"));
   }catch(e){
     toast("用量加载失败","err",e.message||String(e));
   }finally{ if(btn) busy(btn,false); }
+  loadLedger();
+}
+/* Range: preset days, or a custom from/to date pair. */
+function onUsageRangeChange(){
+  const custom=document.getElementById("usageRangeMode").value==="custom";
+  document.getElementById("usageDays").style.display=custom?"none":"";
+  document.getElementById("usageFrom").style.display=custom?"":"none";
+  document.getElementById("usageTo").style.display=custom?"":"none";
+  if(custom){
+    const today=new Date().toISOString().slice(0,10);
+    if(!document.getElementById("usageTo").value) document.getElementById("usageTo").value=today;
+    if(!document.getElementById("usageFrom").value){
+      const d7=new Date(Date.now()-6*86400000).toISOString().slice(0,10);
+      document.getElementById("usageFrom").value=d7;
+    }
+  }
+  loadUsage();
+}
+function usageRangeQuery(){
+  if(document.getElementById("usageRangeMode").value==="custom"){
+    const from=document.getElementById("usageFrom").value, to=document.getElementById("usageTo").value;
+    if(from&&to){
+      const days=Math.max(1,Math.round((new Date(to)-new Date(from))/86400000)+1);
+      return "days="+Math.min(31,days);
+    }
+  }
+  return "days="+encodeURIComponent(document.getElementById("usageDays").value||"7");
+}
+/* Trend chart: dependency-free SVG, mirroring workbuddy2api-gui's TrendChart
+   (counts render as bars, the credit series as a line with area fill). */
+let usageCache=null;
+const TREND_PAD={l:44,r:10,t:12,b:22};
+function niceMax(v){
+  if(v<=0) return 1;
+  const exp=Math.floor(Math.log10(v)), base=Math.pow(10,exp), n=v/base;
+  const step=n<=1?1:(n<=2?2:(n<=5?5:10));
+  return step*base;
+}
+function renderTrend(){
+  const el=document.getElementById("usageTrend");
+  const days=(usageCache&&usageCache.by_day)||[];
+  if(!days.length){el.innerHTML="无数据";return}
+  const metric=document.getElementById("trendMetric").value;
+  const pts=days.map(d=>({label:d.day,value:metric==="credit"?(d.credit||0):(d.count||0)}));
+  const W=600,H=180;
+  const iw=W-TREND_PAD.l-TREND_PAD.r, ih=H-TREND_PAD.t-TREND_PAD.b;
+  const max=niceMax(Math.max.apply(null,pts.map(p=>p.value)));
+  const isLine=metric==="credit";
+  const xs=i=>TREND_PAD.l+(pts.length===1?iw/2:i*iw/(pts.length-1));
+  const yv=v=>TREND_PAD.t+ih-(v/max)*ih;
+  let svg='<svg class="trend-svg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="趋势图">';
+  // horizontal grid + y labels
+  for(let g=0;g<=4;g++){
+    const v=max*g/4, y=yv(v);
+    svg+='<line class="trend-grid" x1="'+TREND_PAD.l+'" y1="'+y+'" x2="'+(W-TREND_PAD.r)+'" y2="'+y+'"/>';
+    svg+='<text class="trend-axis" x="'+(TREND_PAD.l-6)+'" y="'+(y+3)+'" text-anchor="end">'+esc(fmtAxis(v))+'</text>';
+  }
+  if(isLine){
+    let d="",area="";
+    pts.forEach((p,i)=>{d+=(i?"L":"M")+xs(i).toFixed(1)+" "+yv(p.value).toFixed(1)+" ";});
+    area=d+"L"+xs(pts.length-1).toFixed(1)+" "+(TREND_PAD.t+ih)+" L"+xs(0).toFixed(1)+" "+(TREND_PAD.t+ih)+" Z";
+    svg+='<path class="trend-area" d="'+area+'"/>';
+    svg+='<path class="trend-line" d="'+d+'"/>';
+    pts.forEach((p,i)=>{svg+='<circle class="trend-dot" cx="'+xs(i).toFixed(1)+'" cy="'+yv(p.value).toFixed(1)+'" r="2.5"><title>'+esc(p.label)+': '+esc(p.value.toFixed(2))+'</title></circle>';});
+  }else{
+    const bw=Math.max(2,Math.min(24,iw/pts.length*0.6));
+    pts.forEach((p,i)=>{
+      const y=yv(p.value), h=Math.max(1,TREND_PAD.t+ih-y);
+      svg+='<rect class="trend-bar" x="'+(xs(i)-bw/2).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'"><title>'+esc(p.label)+': '+esc(String(p.value))+'</title></rect>';
+    });
+  }
+  // x labels (thin to <=7)
+  const step=Math.max(1,Math.ceil(pts.length/7));
+  pts.forEach((p,i)=>{if(i%step===0||i===pts.length-1){
+    svg+='<text class="trend-axis" x="'+xs(i).toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle">'+esc(p.label.slice(5))+'</text>';
+  }});
+  svg+='</svg>';
+  el.innerHTML=svg;
+}
+function fmtAxis(v){
+  if(v>=1000000) return (v/1000000).toFixed(1)+"M";
+  if(v>=1000) return (v/1000).toFixed(1)+"k";
+  return String(Math.round(v*10)/10);
+}
+/* Credit acquisition ledger (GET /ledger). */
+async function loadLedger(btn){
+  const el=document.getElementById("usageLedger");
+  if(btn) busy(btn,true);
+  try{
+    const d=await api("/ledger?limit=100");
+    if(d.error){el.textContent=d.error;return}
+    const rows=d.ledger||[];
+    el.innerHTML=rows.length?('<table class="log-table"><thead><tr><th>时间</th><th>账号</th><th class="num">增加</th><th class="num">后余额</th><th>来源</th></tr></thead><tbody>'+
+      rows.map(r=>'<tr><td>'+esc(fmtTime(r.time))+'</td><td>'+esc(r.nickname||r.uid8||"-")+'</td>'+
+      '<td class="num status-ok">+'+esc(String(r.delta))+'</td><td class="num">'+esc(String(r.after))+'</td>'+
+      '<td>'+esc(r.source||"-")+'</td></tr>').join("")+'</tbody></table>'):"无记录（积分查询或签到后出现）";
+  }catch(e){el.textContent="加载失败："+(e.message||"")}
+  finally{ if(btn) busy(btn,false); }
+}
+/* Request log (GET /requests) — recorded by the plugin's executor hook. */
+let requestLogCache=[];
+async function loadRequestLog(btn){
+  if(btn) busy(btn,true);
+  try{
+    const d=await api("/requests?limit="+encodeURIComponent(document.getElementById("logsLimit").value||"100"));
+    if(d.error){toast("日志加载失败","err",d.error);return}
+    requestLogCache=(d.requests||[]).map(x=>{try{return typeof x==="string"?JSON.parse(x):x}catch(_){return null}}).filter(Boolean);
+    const st=d.stats||{};
+    const failed=requestLogCache.filter(r=>r.failed).length;
+    const ttfb=requestLogCache.filter(r=>r.ttfb_ms>0);
+    const avgTtfb=ttfb.length?Math.round(ttfb.reduce((s,r)=>s+r.ttfb_ms,0)/ttfb.length):0;
+    document.getElementById("logsTiles").innerHTML=
+      '<div class="ov-tile"><div class="k">本次加载</div><div class="v">'+esc(String(requestLogCache.length))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">失败</div><div class="v '+(failed?"err":"")+'">'+esc(String(failed))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">平均首字</div><div class="v">'+esc(avgTtfb?avgTtfb+"ms":"-")+'</div></div>'+
+      '<div class="ov-tile"><div class="k">累计记录</div><div class="v">'+esc(String((st.requests||0)))+'</div></div>';
+    document.getElementById("logsMeta").textContent="本机保留最近 "+(st.requests||0)+" 条";
+    renderRequestLog();
+  }catch(e){toast("日志加载失败","err",e.message||String(e))}
+  finally{ if(btn) busy(btn,false); }
+}
+function renderRequestLog(){
+  const el=document.getElementById("logsTable");
+  const f=document.getElementById("logsFilter").value;
+  let rows=requestLogCache;
+  if(f==="failed") rows=rows.filter(r=>r.failed);
+  if(f==="ok") rows=rows.filter(r=>!r.failed);
+  if(!rows.length){el.textContent=requestLogCache.length?"无匹配记录":"暂无记录（发起一次对话后出现）";return}
+  el.innerHTML='<table class="log-table"><thead><tr><th>时间</th><th>模型</th><th>账号</th><th class="num">状态</th><th class="num">首字</th><th class="num">耗时</th><th class="num">输出 token</th></tr></thead><tbody>'+
+    rows.map(r=>{
+      const code=r.status||0;
+      const cls=r.failed?"status-err":"status-ok";
+      return '<tr><td>'+esc(fmtTime(r.time))+'</td><td>'+esc(r.model||"-")+'</td>'+
+        '<td>'+esc(r.uid8||"-")+'</td>'+
+        '<td class="num '+cls+'">'+esc(code?String(code):(r.failed?"ERR":"200"))+'</td>'+
+        '<td class="num">'+esc(r.ttfb_ms>0?r.ttfb_ms+"ms":"-")+'</td>'+
+        '<td class="num">'+esc((r.latency_ms||0)+"ms")+'</td>'+
+        '<td class="num">'+esc(String(r.output_tokens||0))+'</td></tr>';
+    }).join("")+'</tbody></table>';
+}
+/* Task history (GET /tasks). */
+let taskLogCache=[];
+async function loadTaskLog(btn){
+  if(btn) busy(btn,true);
+  try{
+    const d=await api("/tasks?limit="+encodeURIComponent(document.getElementById("tasksLimit").value||"50"));
+    if(d.error){toast("任务加载失败","err",d.error);return}
+    taskLogCache=(d.tasks||[]).map(x=>{try{return typeof x==="string"?JSON.parse(x):x}catch(_){return null}}).filter(Boolean);
+    const ok=taskLogCache.filter(t=>t.ok).length;
+    const byTask={};
+    taskLogCache.forEach(t=>{byTask[t.task]=(byTask[t.task]||0)+1});
+    document.getElementById("tasksTiles").innerHTML=
+      '<div class="ov-tile"><div class="k">记录数</div><div class="v">'+esc(String(taskLogCache.length))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">成功</div><div class="v ok">'+esc(String(ok))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">失败</div><div class="v '+(taskLogCache.length-ok?"err":"")+'">'+esc(String(taskLogCache.length-ok))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">类型数</div><div class="v">'+esc(String(Object.keys(byTask).length))+'</div></div>';
+    document.getElementById("tasksMeta").textContent="累计 "+(d.tasks||[]).length+" 条";
+    document.getElementById("tasksTable").innerHTML=taskLogCache.length?
+      ('<table class="log-table"><thead><tr><th>时间</th><th>任务</th><th>账号</th><th class="num">结果</th><th>说明</th></tr></thead><tbody>'+
+      taskLogCache.map(t=>'<tr><td>'+esc(fmtTime(t.time))+'</td><td>'+esc(t.task||"-")+'</td>'+
+      '<td>'+esc(t.account||"-")+'</td>'+
+      '<td class="num '+(t.ok?"status-ok":"status-err")+'">'+esc(t.ok?"成功":"失败")+'</td>'+
+      '<td>'+esc(t.message||"")+'</td></tr>').join("")+'</tbody></table>'):"暂无记录";
+  }catch(e){toast("任务加载失败","err",e.message||String(e))}
+  finally{ if(btn) busy(btn,false); }
+}
+/* Model center (GET /models) — full upstream catalog. */
+let modelCenterCache=[];
+async function loadModelCenter(btn){
+  if(btn) busy(btn,true);
+  try{
+    const d=await api("/models");
+    if(d.error){toast("模型加载失败","err",d.error);return}
+    modelCenterCache=d.models||[];
+    const reasoning=modelCenterCache.filter(m=>m.supports_reasoning).length;
+    const img=modelCenterCache.filter(m=>m.supports_images).length;
+    const tools=modelCenterCache.filter(m=>m.supports_tools).length;
+    document.getElementById("modelsTiles").innerHTML=
+      '<div class="ov-tile"><div class="k">模型总数</div><div class="v">'+esc(String(modelCenterCache.length))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">支持推理</div><div class="v">'+esc(String(reasoning))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">支持工具</div><div class="v">'+esc(String(tools))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">支持图片</div><div class="v">'+esc(String(img))+'</div></div>';
+    document.getElementById("modelsMeta").textContent="共 "+modelCenterCache.length+" 个";
+    if((d.errors||[]).length) toast("部分账号模型拉取失败","warn",d.errors.join("；"));
+    renderModelCenter();
+  }catch(e){toast("模型加载失败","err",e.message||String(e))}
+  finally{ if(btn) busy(btn,false); }
+}
+function renderModelCenter(){
+  const el=document.getElementById("modelsTable");
+  const q=(document.getElementById("modelsSearch").value||"").trim().toLowerCase();
+  const rows=modelCenterCache.filter(m=>!q||[m.id,m.name,m.vendor].some(v=>String(v||"").toLowerCase().includes(q)));
+  if(!rows.length){el.textContent=modelCenterCache.length?"无匹配模型":"暂无模型（账号模型目录未就绪）";return}
+  el.innerHTML='<table class="log-table"><thead><tr><th>模型 ID</th><th>显示名</th><th>厂商</th><th class="num">上下文</th><th class="num">最大输出</th><th class="num">倍率</th><th>能力</th></tr></thead><tbody>'+
+    rows.map(m=>{
+      const caps=[];
+      if(m.supports_reasoning) caps.push("推理");
+      if(m.supports_tools) caps.push("工具");
+      if(m.supports_images) caps.push("图片");
+      const efforts=(m.efforts||[]).length?" · "+m.efforts.join("/"):"";
+      return '<tr><td>'+esc(m.id)+'</td><td>'+esc(m.name||"-")+'</td><td>'+esc(m.vendor||"-")+'</td>'+
+        '<td class="num">'+esc(fmtAxis(m.context_window||0))+'</td>'+
+        '<td class="num">'+esc(fmtAxis(m.max_tokens||0))+'</td>'+
+        '<td class="num">'+esc(m.credits||"-")+'</td>'+
+        '<td>'+esc((caps.join("·")||"-")+efforts)+'</td></tr>';
+    }).join("")+'</tbody></table>';
+}
+/* Credit expiry countdown (A1): package cycle_end → days left, colour-coded.
+   Rendered from data the account cards already carry — no extra fetch. */
+function expiryHTML(cr){
+  if(!cr||!(cr.packages||[]).length) return "";
+  const now=Date.now();
+  const rows=cr.packages.map(p=>{
+    const end=Date.parse(String(p.cycle_end||"").replace(" ","T"));
+    let label="-", cls="expiry-mut", days=null;
+    if(!isNaN(end)){
+      days=Math.ceil((end-now)/86400000);
+      if(days<0){label="已过期";cls="expiry-err"}
+      else if(days<=3){label=days+" 天";cls="expiry-err"}
+      else if(days<=7){label=days+" 天";cls="expiry-warn"}
+      else {label=days+" 天";cls="expiry-ok"}
+    }
+    return '<div class="recent-row"><span>'+esc(p.name||"套餐")+'</span>'+
+      '<span class="'+cls+'">剩 '+esc(label)+'</span>'+
+      '<span class="expiry-mut">可用 '+esc(String(p.remain))+' / '+esc(String(p.size))+'</span></div>';
+  }).join("");
+  return '<div class="expiry-block"><div class="hint" style="margin:6px 0 2px">积分到期</div>'+rows+'</div>';
+}
+/* Manual account disable / re-enable (A6). */
+async function toggleAccount(authIndex, nickname, disabled, btn){
+  busy(btn,true);
+  try{
+    const d=await api("/account/toggle",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({auth_index:authIndex,disabled})});
+    if(d.error){toast("操作失败","err",d.error);return}
+    toast(disabled?"已停用":"已恢复","ok",(nickname||authIndex)+(disabled?"：已从路由池摘除":"：已放回路由池"));
+    await load(false);
+  }catch(e){toast("操作失败","err",e.message||String(e))}
+  finally{ busy(btn,false); }
+}
+function fmtTime(s){
+  if(!s) return "-";
+  const d=new Date(s);
+  if(isNaN(d)) return String(s);
+  return d.toLocaleString();
 }
 /* Settings tab: keepalive status + mirrors of existing toggles. */
 async function loadKeepaliveStatus(){

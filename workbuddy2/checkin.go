@@ -277,6 +277,20 @@ func handleManualCheckinWithCallback(req pluginapi.ManagementRequest, callbackID
 			failN++
 		}
 	}
+	// Panel task log: one row per account that actually attempted a check-in
+	// (already-signed and Global-skipped rows are noise, not task outcomes).
+	for _, out := range results {
+		if out == nil || out["error"] != nil {
+			continue
+		}
+		reason, _ := out["reason"].(string)
+		if reason == "already" || reason == "global" {
+			continue
+		}
+		nick, _ := out["nickname"].(string)
+		msg, _ := out["message"].(string)
+		recordTask("checkin", nick, out["success"] == true, msg)
+	}
 	return map[string]any{
 		"results": results,
 		"summary": map[string]any{
