@@ -265,6 +265,7 @@ func TestPanelShowsAndRefreshesEgressIP(t *testing.T) {
 		{name: "keyed startup", want: `async function loadInitial(){
   if(getKey()){
     if(await load(false)) loadEgressIP();
+    loadOverview();
   }else{
     showAuth();
   }

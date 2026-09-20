@@ -178,6 +178,10 @@ func managementRegistration() managementRegistrationResponse {
 			{Method: http.MethodPost, Path: base + "/select", Description: "Select the active account card used for chat routing (body: {auth_index})."},
 			{Method: http.MethodPost, Path: base + "/keepalive", Description: "Manually refresh access tokens for all accounts (or one with auth_index)."},
 			{Method: http.MethodGet, Path: base + "/keepalive/status", Description: "Last keepalive run summary + config."},
+			{Method: http.MethodGet, Path: base + "/overview", Description: "Aggregated panel overview: account health tiles, credits totals, accounts needing attention."},
+			{Method: http.MethodPost, Path: base + "/login/start", Description: "Start WorkBuddy OAuth device login (body: {region: cn|global})."},
+			{Method: http.MethodPost, Path: base + "/login/poll", Description: "Poll OAuth login status (body: {session_id})."},
+			{Method: http.MethodPost, Path: base + "/login/cancel", Description: "Cancel a pending OAuth login session (body: {session_id})."},
 		},
 		Resources: []resourceRoute{
 			{Path: "/panel", Menu: "WorkBuddy", Description: "WorkBuddy dashboard: credits, check-in, plan, import."},
@@ -252,6 +256,20 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleKeepaliveNowWithCallback(req.ManagementRequest, req.HostCallbackID)))
 	case req.Method == http.MethodGet && path == base+"/keepalive/status":
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleKeepaliveStatus()))
+	case req.Method == http.MethodGet && path == base+"/overview":
+		dash := buildDashboardExWithCallback(false, false, req.HostCallbackID)
+		accounts, _ := dash["accounts"].([]wbAccount)
+		summary, _ := dash["summary"].(map[string]any)
+		return okEnvelope(mgmtJSONResponse(http.StatusOK, buildOverviewFromAccounts(accounts, summary)))
+	case req.Method == http.MethodPost && path == base+"/login/start":
+		status, payload := handleLoginStartManagement(req.ManagementRequest)
+		return okEnvelope(mgmtJSONResponse(status, payload))
+	case req.Method == http.MethodPost && path == base+"/login/poll":
+		status, payload := handleLoginPollManagement(req.ManagementRequest)
+		return okEnvelope(mgmtJSONResponse(status, payload))
+	case req.Method == http.MethodPost && path == base+"/login/cancel":
+		status, payload := handleLoginCancelManagement(req.ManagementRequest)
+		return okEnvelope(mgmtJSONResponse(status, payload))
 	}
 	return okEnvelope(mgmtJSONResponse(http.StatusNotFound, map[string]any{"error": "not found: " + path}))
 }
@@ -372,7 +390,9 @@ func mutatingManagementPath(path string) bool {
 		base + "/import",
 		base + "/trial",
 		base + "/select",
-		base + "/keepalive":
+		base + "/keepalive",
+		base + "/login/start",
+		base + "/login/cancel":
 		return true
 	}
 	return false
