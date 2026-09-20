@@ -1,228 +1,81 @@
-// usage.go implements the UsagePlugin capability: the host calls handleUsage
-// after every request with a canonical record, and we forward to CPAMP. The
-// legacy publishUsage path is kept for hosts without UsagePlugin wiring.
+// usage.go keeps only the local usage-detail extraction used by the executor
+// paths (sseUsageCollector, usageDetailFromMap/Completion). The CPAMP usage
+// forwarder was removed: publishUsage is now a no-op kept for call-site
+// stability, and the host UsagePlugin callback is acknowledged without
+// forwarding (usage stays inside CPA's own DefaultManager).
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
-	"net/http"
-	"strings"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
-// handleUsage is the UsagePlugin entry point. The host calls this after every
-// request with the canonical usage record (it also records to its own
-// DefaultManager, so we don't need to). Our job is just to forward to CPAMP.
-//
-// v0.7.0 compliance: this replaces the old pattern where each executor path
-// called publishUsage directly (which both skipped the host audit and forced
-// every call site to remember to publish).
+// handleUsage is the UsagePlugin entry point. The forwarder is removed, so we
+// simply acknowledge: the host still records usage into its own DefaultManager.
 func handleUsage(raw []byte) ([]byte, error) {
-	var record pluginapi.UsageRecord
-	if err := json.Unmarshal(raw, &record); err != nil {
-		return nil, err
-	}
-	// Only forward workbuddy's own records; the host will route other plugins'
-	// usage to their own UsagePlugin.
-	if record.Provider != "" && record.Provider != providerName {
-		return okEnvelope(map[string]any{"forwarded": false})
-	}
-	detail := usage.Detail{
-		InputTokens:         record.Detail.InputTokens,
-		OutputTokens:        record.Detail.OutputTokens,
-		ReasoningTokens:     record.Detail.ReasoningTokens,
-		CachedTokens:        record.Detail.CachedTokens,
-		CacheReadTokens:     record.Detail.CacheReadTokens,
-		CacheCreationTokens: record.Detail.CacheCreationTokens,
-		TotalTokens:         record.Detail.TotalTokens,
-	}
-	started := record.RequestedAt
-	if started.IsZero() {
-		started = time.Now().Add(-record.Latency)
-	}
-	forwardUsageToCPAMP(
-		record.Alias,
-		record.Model,
-		record.AuthID,
-		started,
-		detail,
-		record.Failed,
-		record.Failure.StatusCode,
-		record.Failure.Body,
-	)
-	return okEnvelope(map[string]any{"forwarded": true})
+	return okEnvelope(map[string]any{"forwarded": false})
 }
 
-// publishUsage is kept for backward compatibility with existing call sites
-// inside the executor. After v0.7.0 the host calls UsagePlugin.HandleUsage
-// itself after every request, so executor-side publish is redundant. We
-// forward to CPAMP here too so that hosts WITHOUT UsagePlugin wiring (older
-// CPA builds) still emit usage; hosts with the wiring will trigger HandleUsage
-// separately, but forwardUsageToCPAMP is idempotent at the CPAMP ingestion
-// layer (NDJSON import dedups on timestamp+auth+model+total_tokens).
+// publishUsage is a no-op kept so the existing executor call sites stay
+// untouched. Previously it forwarded attempts to CPAMP; usage accounting now
+// lives entirely in the host.
 func publishUsage(requestedModel, upstreamModel, authID string, started time.Time, detail usage.Detail, failed bool, statusCode int, errBody string) {
-	model := strings.TrimSpace(upstreamModel)
-	if model == "" {
-		model = strings.TrimSpace(requestedModel)
-	}
-	alias := strings.TrimSpace(requestedModel)
-	if alias == "" {
-		alias = model
-	}
-	// Fire-and-forget so the executor hot path never blocks on the CPAMP
-	// round-trip. handleUsage (the host-driven path) is synchronous because the
-	// host already runs it on its own goroutine after the request completes.
-	go forwardUsageToCPAMP(alias, model, authID, started, normalizeUsageDetail(detail), failed, statusCode, errBody)
 }
 
-// forwardUsageToCPAMP POSTs one NDJSON line to CPAMP usage/import.
-// Silent on misconfig / network errors — never blocks chat.
-//
-// v0.7.0: routed via host.http.do so the call is captured by request-log and
-// uses host transport policy (proxy, timeout). Was: raw http.Client.
-func forwardUsageToCPAMP(alias, model, authID string, started time.Time, detail usage.Detail, failed bool, statusCode int, errBody string) {
-	usageReportMu.RLock()
-	url := strings.TrimSpace(usageReportURL)
-	key := strings.TrimSpace(usageReportKey)
-	usageReportMu.RUnlock()
-	if url == "" || key == "" {
-		return
+// intFromAny extracts a token count from the loosely-typed usage JSON.
+func intFromAny(v any) int {
+	switch x := v.(type) {
+	case float64:
+		return int(x)
+	case int:
+		return x
+	case json.Number:
+		n, _ := x.Int64()
+		return int(n)
 	}
-	ts := started
-	if ts.IsZero() {
-		ts = time.Now()
-	}
-	latencyMs := int64(0)
-	if !started.IsZero() {
-		latencyMs = time.Since(started).Milliseconds()
-		if latencyMs < 0 {
-			latencyMs = 0
-		}
-	}
-	total := detail.TotalTokens
-	if total == 0 {
-		total = detail.InputTokens + detail.OutputTokens + detail.ReasoningTokens
-	}
-	failBody := ""
-	failCode := 200
-	if failed {
-		failCode = statusCode
-		if failCode <= 0 {
-			failCode = 502
-		}
-		failBody = truncate(redactSecrets(errBody), 512)
-	}
-	payload := map[string]any{
-		"timestamp":     ts.UTC().Format(time.RFC3339Nano),
-		"latency_ms":    latencyMs,
-		"source":        "workbuddy",
-		"auth_index":    strings.TrimSpace(authID),
-		"provider":      providerName,
-		"model":         model,
-		"alias":         alias,
-		"endpoint":      "POST /v1/chat/completions",
-		"auth_type":     "oauth",
-		"executor_type": "workbuddy",
-		"generate":      true,
-		"failed":        failed,
-		"tokens": map[string]any{
-			"input_tokens":          detail.InputTokens,
-			"output_tokens":         detail.OutputTokens,
-			"reasoning_tokens":      detail.ReasoningTokens,
-			"cached_tokens":         detail.CachedTokens,
-			"cache_read_tokens":     detail.CacheReadTokens,
-			"cache_creation_tokens": detail.CacheCreationTokens,
-			"total_tokens":          total,
-		},
-		"fail": map[string]any{
-			"status_code": failCode,
-			"body":        failBody,
-		},
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return
-	}
-	body = append(body, '\n')
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("Content-Type", "application/x-ndjson")
-	resp, err := hostHTTPDo(req)
-	if err != nil {
-		return
-	}
-	_ = resp.Body
+	return 0
 }
 
-func normalizeUsageDetail(d usage.Detail) usage.Detail {
-	if d.TotalTokens == 0 {
-		if total := d.InputTokens + d.OutputTokens + d.ReasoningTokens; total > 0 {
-			d.TotalTokens = total
-		}
+// promptDetailMap safely reads prompt_tokens_details.{cached_tokens,...}.
+func promptDetailMap(m map[string]any, key string) int {
+	details, _ := m["prompt_tokens_details"].(map[string]any)
+	if details == nil {
+		return 0
 	}
-	return d
+	return intFromAny(details[key])
 }
 
 // usageDetailFromMap converts an OpenAI-style "usage" JSON object into a
-// usage.Detail, tolerating both snake_case naming and numeric jitter.
+// usage.Detail for the executor's local accounting.
 func usageDetailFromMap(m map[string]any) usage.Detail {
-	if len(m) == 0 {
+	if m == nil {
 		return usage.Detail{}
 	}
-	num := func(keys ...string) int64 {
-		for _, k := range keys {
-			if v, ok := m[k]; ok {
-				switch n := v.(type) {
-				case float64:
-					return int64(n)
-				case int64:
-					return n
-				case json.Number:
-					i, _ := n.Int64()
-					return i
-				}
-			}
-		}
-		return 0
+	return usage.Detail{
+		InputTokens:     int64(intFromAny(m["prompt_tokens"])),
+		OutputTokens:    int64(intFromAny(m["completion_tokens"])),
+		CachedTokens:    int64(promptDetailMap(m, "cached_tokens")),
+		CacheReadTokens: int64(promptDetailMap(m, "cached_tokens")),
+		TotalTokens:     int64(intFromAny(m["total_tokens"])),
 	}
-	d := usage.Detail{
-		InputTokens:     num("prompt_tokens", "input_tokens"),
-		OutputTokens:    num("completion_tokens", "output_tokens"),
-		TotalTokens:     num("total_tokens"),
-		CachedTokens:    num("cached_tokens"),
-		CacheReadTokens: num("cache_read_input_tokens"),
-	}
-	if ct, ok := m["completion_tokens_details"].(map[string]any); ok {
-		if v, ok2 := ct["reasoning_tokens"].(float64); ok2 {
-			d.ReasoningTokens = int64(v)
-		}
-	}
-	return d
 }
 
 // usageDetailFromCompletion extracts the usage block from an aggregated
-// non-streaming chat.completion payload.
+// completion payload (sync chat path).
 func usageDetailFromCompletion(payload []byte) usage.Detail {
-	var obj map[string]any
-	if json.Unmarshal(payload, &obj) != nil {
+	var m struct {
+		Usage map[string]any `json:"usage"`
+	}
+	if json.Unmarshal(payload, &m) != nil {
 		return usage.Detail{}
 	}
-	m, _ := obj["usage"].(map[string]any)
-	return usageDetailFromMap(m)
+	return usageDetailFromMap(m.Usage)
 }
 
-// sseUsageCollector scans upstream SSE chunks and keeps the last "usage"
-// object seen (CodeBuddy emits it on the terminal chunk).
+// sseUsageCollector observes raw upstream SSE chunks and keeps the last usage
+// object seen (upstream emits usage on the terminal chunk).
 type sseUsageCollector struct {
 	last map[string]any
 }

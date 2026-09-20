@@ -10,20 +10,12 @@ import (
 func TestRegistrationConfigFieldsMatchImplementedConfig(t *testing.T) {
 	fields := wbRegistration().Metadata.ConfigFields
 	managementKeyCount := 0
-	proxyURLCount := 0
-	proxyDescription := ""
 	for _, field := range fields {
 		switch field.Name {
 		case "management_key":
 			managementKeyCount++
-		case "proxy-url":
-			proxyURLCount++
-			if field.Type != pluginapi.ConfigFieldTypeString {
-				t.Fatalf("proxy-url type = %q, want string", field.Type)
-			}
-			proxyDescription = strings.ToLower(field.Description)
-		case "proxy_url":
-			t.Fatal("proxy_url alias must not be registered")
+		case "proxy-url", "proxy_url", "usage_report_url", "usage_report_key":
+			t.Fatalf("removed config field %q must not be registered", field.Name)
 		case "scheduler_mode":
 			if strings.Contains(strings.ToLower(field.Description), "highest remaining") {
 				t.Fatal("scheduler_mode description advertises unimplemented highest-credit ranking")
@@ -35,14 +27,6 @@ func TestRegistrationConfigFieldsMatchImplementedConfig(t *testing.T) {
 	}
 	if managementKeyCount != 1 {
 		t.Fatalf("management_key config field count = %d", managementKeyCount)
-	}
-	if proxyURLCount != 1 {
-		t.Fatalf("proxy-url config field count = %d", proxyURLCount)
-	}
-	for _, required := range []string{"http", "socks5", "socks5h", "inherit", "fail closed", "request-log"} {
-		if !strings.Contains(proxyDescription, required) {
-			t.Errorf("proxy-url description missing %q: %q", required, proxyDescription)
-		}
 	}
 }
 

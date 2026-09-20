@@ -1,7 +1,8 @@
 // usage_config.go decodes plugin config from config_yaml on every
-// register/reconfigure call and resolves the CPAMP usage report URL/key.
+// register/reconfigure call.
 // All plugin-level config lives here so the rest of the plugin reads
-// consistent, lock-protected snapshots.
+// consistent, lock-protected snapshots. CPAMP usage-report resolution was
+// removed with the usage forwarder feature.
 package main
 
 import (
@@ -9,11 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -26,19 +25,6 @@ var (
 	checkinAuto   = true // enabled by default
 	checkinAutoMu sync.RWMutex
 
-	// usageReportURL / usageReportKey: POST NDJSON to CPA-Manager-Plus
-	// /v0/management/usage/import (only path that reaches request monitoring;
-	// c-shared plugins cannot use host usage.DefaultManager/redisqueue).
-	//
-	// Resolution order (community-style, like codex-auth-importer env injection):
-	//  1) plugins.configs.workbuddy.usage_report_* in config.yaml
-	//  2) env USAGE_REPORT_URL / USAGE_REPORT_KEY / CPAMP_ADMIN_KEY
-	//  3) secret files (docker secrets / bind-mount), e.g. /run/secrets/cpamp_admin_key
-	// Default URL targets the compose service name of CPA-Manager-Plus.
-	usageReportURL = defaultUsageReportURL
-	usageReportKey = ""
-	usageReportMu  sync.RWMutex
-
 	// managementAPIKey: plugin-layer auth for /v0/management/plugins/workbuddy/*
 	// write endpoints. When empty, plugin relies on host-side auth (CPA's
 	// management middleware) — that's the historical default and stays
@@ -48,16 +34,6 @@ var (
 	managementAPIKey   = ""
 	managementAPIKeyMu sync.RWMutex
 )
-
-// Default URL tries localhost first (works for both bare-metal and Docker
-// host-network), falls back to Docker compose service name. The probe runs
-// once at configure() time; a reachable endpoint wins.
-//
-// For users who run CPA Manager Plus on a different host/port, set
-// usage_report_url in plugin config or env USAGE_REPORT_URL.
-const defaultUsageReportURL = "http://127.0.0.1:18317/v0/management/usage/import"
-
-const fallbackUsageReportURL = "http://cpa-manager-plus:18317/v0/management/usage/import"
 
 // configure decodes plugin config from the lifecycle request.
 func configure(raw []byte) error {
@@ -69,7 +45,6 @@ func configure(raw []byte) error {
 	nextMgmtKey := ""
 	nextProxyURL := ""
 
-	cfgURL, cfgKey := "", ""
 	var configYAML []byte
 	if len(raw) > 0 {
 		var req struct {
@@ -96,8 +71,6 @@ func configure(raw []byte) error {
 	if configScalars["scheduler_mode"] == schedulerModeCredits {
 		nextSchedulerMode = schedulerModeCredits
 	}
-	cfgURL = configScalars["usage_report_url"]
-	cfgKey = configScalars["usage_report_key"]
 	nextMgmtKey = configScalars["management_key"]
 	if value, ok := configScalars["token_keepalive"]; ok {
 		nextKeepaliveAuto = enabledConfigValue(value)
@@ -142,7 +115,6 @@ func configure(raw []byte) error {
 	managementAPIKey = nextMgmtKey
 	managementAPIKeyMu.Unlock()
 
-	resolveUsageReport(cfgURL, cfgKey)
 	ensureScheduler()
 	currentModelRuntime().commitFeatureRuntime(nextFeatures)
 	return nil
@@ -291,81 +263,4 @@ func parseProxyURLConfig(raw []byte) (string, error) {
 		value = node.Value
 	}
 	return value, nil
-}
-
-// resolveUsageReport fills usageReportURL/key from config → env → secret files.
-// Mirrors community plugins that inject management keys via env/build (e.g.
-// codex-auth-importer CODEX_AUTH_IMPORTER_MANAGEMENT_KEY), not plaintext CPA
-// remote-management.secret-key (that field is bcrypt-hashed).
-func resolveUsageReport(cfgURL, cfgKey string) {
-	url := firstNonEmpty(
-		strings.TrimSpace(cfgURL),
-		strings.TrimSpace(os.Getenv("USAGE_REPORT_URL")),
-		strings.TrimSpace(os.Getenv("CPAMP_USAGE_IMPORT_URL")),
-	)
-	if url == "" {
-		url = probeUsageReportURL()
-	}
-	key := firstNonEmpty(
-		strings.TrimSpace(cfgKey),
-		strings.TrimSpace(os.Getenv("USAGE_REPORT_KEY")),
-		strings.TrimSpace(os.Getenv("CPAMP_ADMIN_KEY")),
-		strings.TrimSpace(os.Getenv("CPA_MANAGER_ADMIN_KEY")),
-		readSecretFile(os.Getenv("USAGE_REPORT_KEY_FILE")),
-		readSecretFile(os.Getenv("CPAMP_ADMIN_KEY_FILE")),
-		readSecretFile(os.Getenv("CPA_MANAGER_ADMIN_KEY_FILE")),
-		// docker compose secrets default path
-		readSecretFile("/run/secrets/cpamp_admin_key"),
-		readSecretFile("/run/secrets/cpamp-admin-key"),
-		// optional bind-mounts used on this host
-		readSecretFile("/CLIProxyAPI/secrets/cpamp-admin-key"),
-		readSecretFile("/CLIProxyAPI/secrets/cpamp_admin_key"),
-	)
-	usageReportMu.Lock()
-	usageReportURL = url
-	usageReportKey = key
-	usageReportMu.Unlock()
-}
-
-// probeUsageReportURL tries localhost first (bare-metal + Docker host-network),
-// then Docker compose service name. Returns whichever responds; defaults to
-// localhost if both fail (better to try localhost than an unreachable hostname).
-func probeUsageReportURL() string {
-	for _, candidate := range []string{defaultUsageReportURL, fallbackUsageReportURL} {
-		if probeURL(candidate, 2*time.Second) {
-			return candidate
-		}
-	}
-	return defaultUsageReportURL
-}
-
-// probeURL does a quick HEAD/GET to check if the endpoint is reachable.
-func probeURL(target string, timeout time.Duration) bool {
-	state := currentProxyState()
-	if state.mode == proxyModeBlocked || state.mode == proxyModeExplicit && state.client == nil {
-		return false
-	}
-	client := &http.Client{Timeout: timeout, CheckRedirect: rejectHTTPRedirect}
-	if state.mode == proxyModeExplicit {
-		client.Transport = state.client.Transport
-	}
-	resp, err := client.Get(target)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	// A non-redirect HTTP response means the endpoint itself is reachable.
-	return resp.StatusCode > 0 && (resp.StatusCode < http.StatusMultipleChoices || resp.StatusCode >= http.StatusBadRequest)
-}
-
-func readSecretFile(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(b))
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -299,4 +300,15 @@ func sameStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// testHTTPResponse builds a minimal HTTP response for host-bridge stubs.
+// Moved here when proxy_test.go was removed with the plugin proxy feature.
+func testHTTPResponse(req *http.Request, body string) *http.Response {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    req,
+	}
 }

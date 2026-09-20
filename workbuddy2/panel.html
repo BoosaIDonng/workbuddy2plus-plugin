@@ -128,7 +128,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .modal-ft{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border);background:var(--surface);border-radius:0 0 var(--radius-lg) var(--radius-lg)}
 .modal-ft button.sec{background:var(--btn-sec);color:var(--fg)}
 .modal-ft button.sec:hover{background:var(--btn-sec-hover)}
-/* --- panel-migration: tab nav + overview tiles + batch progress + login wizard --- */
+/* --- panel-migration: tab nav + overview tiles + batch progress --- */
 .tabs{display:flex;gap:6px;margin:14px 0 4px;flex-wrap:wrap}
 .tab-btn{background:var(--surface);border:1px solid var(--border);color:var(--mut);border-radius:10px;padding:7px 16px;font-size:13px;cursor:pointer;font-weight:600}
 .tab-btn.active{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
@@ -148,14 +148,9 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .bp-bar.warn{background:var(--warn)}
 .bp-row{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap}
 .bp-row:last-child{border-bottom:none}
+.action-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
 .bp-row .nm{font-weight:600;min-width:120px}
 .bp-row.st-ok .st{color:var(--ok)}.bp-row.st-fail .st{color:var(--err)}.bp-row.st-run .st{color:var(--acc)}
-.wiz-steps{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
-.wiz-pill{border-radius:99px;padding:4px 14px;font-size:12px;font-weight:600;background:var(--surface);border:1px solid var(--border);color:var(--mut)}
-.wiz-pill.on{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
-.wiz-pill.done{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-border)}
-.wiz-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
-.mono-box{font-family:ui-monospace,monospace;font-size:12px;background:var(--code-bg);color:var(--code-fg);border-radius:8px;padding:10px 12px;word-break:break-all;margin:8px 0}
 .set-card{margin-bottom:14px}
 .set-card h3{margin:0 0 8px;font-size:14px}
 </style>
@@ -219,7 +214,6 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
   <div class="tabs" id="tabNav" role="tablist">
     <button type="button" class="tab-btn active" data-tab="overview" onclick="switchTab('overview',this)">总览</button>
     <button type="button" class="tab-btn" data-tab="accounts" onclick="switchTab('accounts',this)">账号</button>
-    <button type="button" class="tab-btn" data-tab="login" onclick="switchTab('login',this)">登录</button>
     <button type="button" class="tab-btn" data-tab="settings" onclick="switchTab('settings',this)">设置</button>
   </div>
   <div class="tab-view show" id="tab-overview">
@@ -228,7 +222,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
       <h3 style="margin:0 0 6px;font-size:14px">需要关注</h3>
       <div id="ovAttentionRows"></div>
     </div>
-    <div class="wiz-actions"><button id="ovRefreshBtn" onclick="loadOverview(this)">刷新总览</button><span class="toggle" id="ovTime"></span></div>
+    <div class="action-row"><button id="ovRefreshBtn" onclick="loadOverview(this)">刷新总览</button><span class="toggle" id="ovTime"></span></div>
   </div>
   <div class="tab-view" id="tab-accounts">
   <div class="bar">
@@ -252,49 +246,6 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
   <div class="summary card" id="summaryBox" style="display:none"></div>
   <div id="grid" class="grid"><div class="loading">加载中…</div></div>
   </div>
-  <div class="tab-view" id="tab-login">
-    <div class="wiz-steps" id="wizSteps">
-      <span class="wiz-pill on" id="wizPill1">1 · 发起授权</span>
-      <span class="wiz-pill" id="wizPill2">2 · 浏览器登录</span>
-      <span class="wiz-pill" id="wizPill3">3 · 完成保存</span>
-    </div>
-    <div class="card" id="wizIdle">
-      <h3 style="margin:0 0 8px;font-size:14px">添加 WorkBuddy / CodeBuddy 账号</h3>
-      <p class="hint">选择账号区域，发起 OAuth 设备授权后，在浏览器完成登录。凭证由 CPA 宿主 auth store 保存（workbuddy-&lt;uid&gt;.json），本面板不展示任何 token。</p>
-      <div class="wiz-actions">
-        <select id="wizRegion" class="field-input" style="max-width:200px" aria-label="账号区域">
-          <option value="cn">国内版 · codebuddy.cn</option>
-          <option value="global">国际版 · workbuddy.ai</option>
-        </select>
-        <button onclick="wizStart()">发起授权</button>
-        <button class="sec" onclick="switchTab('accounts',document.querySelector('.tab-btn[data-tab=accounts]'))">改用导入凭证</button>
-      </div>
-    </div>
-    <div class="card" id="wizWaiting" style="display:none">
-      <h3 style="margin:0 0 8px;font-size:14px">等待登录完成…</h3>
-      <p class="hint">1. 点击「打开授权页」在新标签完成登录；2. 登录成功后回到本页，授权结果自动轮询。</p>
-      <div class="mono-box" id="wizUrl"></div>
-      <div class="wiz-actions">
-        <a id="wizOpen" class="btn" href="#" target="_blank" rel="noopener">打开授权页</a>
-        <button class="sec" onclick="wizCopyUrl(this)">复制链接</button>
-        <button class="sec" onclick="wizCancel()">取消授权</button>
-        <span class="toggle" id="wizStatus">轮询中…</span>
-      </div>
-    </div>
-    <div class="card" id="wizDone" style="display:none">
-      <h3 style="margin:0 0 8px;font-size:14px;color:var(--ok)">登录成功</h3>
-      <div class="kv" id="wizResult"></div>
-      <div class="wiz-actions">
-        <button onclick="wizRestart()">再添加一个</button>
-        <button class="sec" onclick="switchTab('accounts',document.querySelector('.tab-btn[data-tab=accounts]'));load(true,document.getElementById('refreshBtn'))">查看账号</button>
-      </div>
-    </div>
-    <div class="card" id="wizError" style="display:none">
-      <h3 style="margin:0 0 8px;font-size:14px;color:var(--err)">登录未完成</h3>
-      <p class="hint" id="wizErrorMsg"></p>
-      <div class="wiz-actions"><button onclick="wizRestart()">重新发起</button></div>
-    </div>
-  </div>
   <div class="tab-view" id="tab-settings">
     <div class="card set-card">
       <h3>自动签到</h3>
@@ -304,12 +255,12 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     <div class="card set-card">
       <h3>保活</h3>
       <div id="keepaliveStatus" class="hint">加载中…</div>
-      <div class="wiz-actions"><button class="sec" onclick="runKeepaliveNow(this)">立即保活</button><button class="sec" onclick="loadKeepaliveStatus()">刷新状态</button></div>
+      <div class="action-row"><button class="sec" onclick="runKeepaliveNow(this)">立即保活</button><button class="sec" onclick="loadKeepaliveStatus()">刷新状态</button></div>
     </div>
     <div class="card set-card">
       <h3>屏蔽词混淆</h3>
       <p class="hint">对 system/developer 提示词与工具元数据做 U+200B 混淆，规避上游模板句审核。</p>
-      <div class="wiz-actions"><button class="sec" onclick="openDesensitizeModal()">打开屏蔽词设置</button></div>
+      <div class="action-row"><button class="sec" onclick="openDesensitizeModal()">打开屏蔽词设置</button></div>
     </div>
     <div class="card set-card">
       <h3>接入信息</h3>
@@ -1316,66 +1267,6 @@ async function runBatch(kind,accounts){
   batchRunning=false;
   toast("批量任务完成","ok","成功 "+rows.filter(r=>r.state==="done").length+" / 失败 "+rows.filter(r=>r.state==="error").length);
   load(false);
-}
-/* Login wizard: OAuth device flow via /login/start|poll|cancel. Polls every
-   2.5s; on success shows uid/nickname/file only — no tokens are surfaced. */
-let wizTimer=null,wizSession="";
-function wizPill(n,state){
-  for(let i=1;i<=3;i++){
-    const p=document.getElementById("wizPill"+i);
-    p.classList.remove("on","done");
-    if(i<n)p.classList.add("done");
-    else if(i===n)p.classList.add("on");
-  }
-}
-function wizShow(id){
-  ["wizIdle","wizWaiting","wizDone","wizError"].forEach(x=>{
-    document.getElementById(x).style.display=x===id?"block":"none";
-  });
-}
-async function wizStart(){
-  const region=document.getElementById("wizRegion").value;
-  try{
-    const d=await api("/login/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({region})});
-    if(d.error){toast("发起授权失败","err",d.error);return}
-    wizSession=d.session_id;
-    document.getElementById("wizUrl").textContent=d.auth_url;
-    document.getElementById("wizOpen").href=d.auth_url;
-    wizPill(2);wizShow("wizWaiting");
-    wizTimer=setInterval(wizPoll,2500);
-  }catch(e){toast("发起授权失败","err",e.message||String(e))}
-}
-async function wizPoll(){
-  if(!wizSession){clearInterval(wizTimer);return}
-  try{
-    const d=await api("/login/poll",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:wizSession})});
-    if(d.status==="pending") return;
-    clearInterval(wizTimer);wizTimer=null;
-    if(d.status==="success"){
-      wizPill(3);wizShow("wizDone");
-      document.getElementById("wizResult").innerHTML=
-        '<dt>UID</dt><dd>'+esc(d.uid||"-")+'</dd><dt>昵称</dt><dd>'+esc(d.nickname||"-")+'</dd><dt>凭证文件</dt><dd>'+esc(d.file||"-")+'</dd>';
-    }else{
-      wizShow("wizError");
-      document.getElementById("wizErrorMsg").textContent=d.message||("状态："+(d.status||"unknown"));
-    }
-  }catch(e){
-    clearInterval(wizTimer);wizTimer=null;
-    wizShow("wizError");
-    document.getElementById("wizErrorMsg").textContent=e.message||String(e);
-  }
-}
-async function wizCancel(){
-  clearInterval(wizTimer);wizTimer=null;
-  if(wizSession){
-    try{await api("/login/cancel",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:wizSession})})}catch(_){}
-  }
-  wizSession="";wizPill(1);wizShow("wizIdle");
-}
-function wizRestart(){wizCancel()}
-function wizCopyUrl(btn){
-  const url=document.getElementById("wizUrl").textContent||"";
-  navigator.clipboard&&navigator.clipboard.writeText(url).then(()=>toast("已复制","ok"),()=>toast("复制失败","warn"));
 }
 /* Settings tab: keepalive status + mirrors of existing toggles. */
 async function loadKeepaliveStatus(){

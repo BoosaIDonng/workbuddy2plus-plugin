@@ -266,8 +266,6 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 		return handleExecStream(request)
 	case pluginabi.MethodExecutorCountTokens:
 		return errorEnvelope("unsupported_method", "WorkBuddy does not expose a count_tokens API"), nil
-	case pluginabi.MethodExecutorHTTPRequest:
-		return handleExecHTTPRequest(request)
 	case pluginabi.MethodManagementRegister:
 		// Cache host-injected BasePath so handleManagement doesn't hardcode
 		// /v0/management (v0.6.31: tolerate future host path changes).
@@ -358,10 +356,7 @@ func wbRegistration() registration {
 				{Name: "oauth_client_mode", Type: pluginapi.ConfigFieldTypeEnum, EnumValues: []string{oauthClientModeCLI, oauthClientModeWorkBuddy}, Description: "OAuth request profile: cli (default) or explicit WorkBuddy desktop profile."},
 				{Name: "enterprise_credits", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Probe strict CN enterprise credits before personal resource packages (default false; Global unchanged)."},
 				{Name: "management_key", Type: pluginapi.ConfigFieldTypeString, Description: "Optional Bearer key enforced by WorkBuddy for mutating management endpoints; also env WB_MANAGEMENT_KEY."},
-				{Name: "proxy-url", Type: pluginapi.ConfigFieldTypeString, Description: "Optional plugin-level proxy for all WorkBuddy HTTP traffic. Supports http, https, socks5, and socks5h; empty preserves existing routing and host-bridged calls inherit CPA. Invalid settings fail closed. Explicit proxy traffic bypasses CPA request-log."},
 				{Name: "scheduler_mode", Type: pluginapi.ConfigFieldTypeEnum, EnumValues: []string{schedulerModeOff, schedulerModeCredits}, Description: "Multi-account selection: off (defer to built-in, default) or credits (pick the panel-selected account, with non-exhausted fallback). WARNING: when off + lifecycle_auto=false, exhausted accounts may still be routed — enable lifecycle_auto or set scheduler_mode=credits."},
-				{Name: "usage_report_url", Type: pluginapi.ConfigFieldTypeString, Description: "Optional override of CPAMP usage import URL (default http://cpa-manager-plus:18317/v0/management/usage/import; also env USAGE_REPORT_URL)."},
-				{Name: "usage_report_key", Type: pluginapi.ConfigFieldTypeString, Description: "Optional CPAMP admin key override. Prefer auto-detect from env CPAMP_ADMIN_KEY / USAGE_REPORT_KEY or secret file /run/secrets/cpamp_admin_key."},
 			},
 		},
 		Capabilities: registrationCapability{
@@ -374,7 +369,7 @@ func wbRegistration() registration {
 			ExecutorOutputFormats: []string{"chat-completions"},
 			ManagementAPI:         true,
 			Scheduler:             true,
-			UsagePlugin:           true,
+			UsagePlugin:           false,
 		},
 	}
 }

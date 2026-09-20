@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -287,4 +288,37 @@ loadInitial();`},
 	if !strings.Contains(html, `el.textContent="不可用"`) {
 		t.Fatal("panel lacks non-blocking unavailable state")
 	}
+}
+
+// handlerSource extracts a top-level function body from a source file. Moved
+// here when executor_http_test.go was removed with the executor_http feature.
+func handlerSource(t *testing.T, file, signature string) string {
+	t.Helper()
+	source, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := strings.Index(string(source), signature)
+	if start < 0 {
+		t.Fatalf("handler %s not found", signature)
+	}
+	open := strings.Index(string(source[start:]), "{")
+	if open < 0 {
+		t.Fatalf("handler %s body not found", signature)
+	}
+	open += start
+	depth := 0
+	for end := open; end < len(source); end++ {
+		switch source[end] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return string(source[start : end+1])
+			}
+		}
+	}
+	t.Fatalf("handler %s body not terminated", signature)
+	return ""
 }

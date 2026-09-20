@@ -164,17 +164,11 @@ func TestConfigureConfiguredModelsIgnoresScalarContinuationSettings(t *testing.T
 	oldFeatures := featureRuntime.Load()
 	oldProxy := proxyState.Load()
 	restoreScheduler := setSchedulerMode(schedulerModeOff)
-	usageReportMu.RLock()
-	oldUsageURL, oldUsageKey := usageReportURL, usageReportKey
-	usageReportMu.RUnlock()
 	t.Cleanup(func() {
 		activeModelRuntime.Store(previousRuntime)
 		featureRuntime.Store(oldFeatures)
 		proxyState.Store(oldProxy)
 		restoreScheduler()
-		usageReportMu.Lock()
-		usageReportURL, usageReportKey = oldUsageURL, oldUsageKey
-		usageReportMu.Unlock()
 	})
 
 	for _, raw := range []string{
@@ -213,16 +207,10 @@ func TestConfigureConfiguredModelsRetainsInvalidStateAndInvalidatesValidGenerati
 	previousRuntime := activeModelRuntime.Swap(runtime)
 	oldFeatures := featureRuntime.Load()
 	oldProxy := proxyState.Load()
-	usageReportMu.RLock()
-	oldUsageURL, oldUsageKey := usageReportURL, usageReportKey
-	usageReportMu.RUnlock()
 	t.Cleanup(func() {
 		activeModelRuntime.Store(previousRuntime)
 		featureRuntime.Store(oldFeatures)
 		proxyState.Store(oldProxy)
-		usageReportMu.Lock()
-		usageReportURL, usageReportKey = oldUsageURL, oldUsageKey
-		usageReportMu.Unlock()
 	})
 
 	seedAuth := func() {
@@ -631,16 +619,10 @@ func TestConfiguredModelsSwitchToEmptyResumesWorkBuddyCacheDiscovery(t *testing.
 	oldRuntime := activeModelRuntime.Swap(runtime)
 	oldFeatures := featureRuntime.Load()
 	oldProxy := proxyState.Load()
-	usageReportMu.RLock()
-	oldUsageURL, oldUsageKey := usageReportURL, usageReportKey
-	usageReportMu.RUnlock()
 	t.Cleanup(func() {
 		activeModelRuntime.Store(oldRuntime)
 		featureRuntime.Store(oldFeatures)
 		proxyState.Store(oldProxy)
-		usageReportMu.Lock()
-		usageReportURL, usageReportKey = oldUsageURL, oldUsageKey
-		usageReportMu.Unlock()
 	})
 	configureModels := func(value string) {
 		t.Helper()

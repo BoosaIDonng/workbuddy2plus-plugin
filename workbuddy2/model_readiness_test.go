@@ -1053,16 +1053,10 @@ func TestModelRuntimeFailedConfigureKeepsGeneration(t *testing.T) {
 	previousRuntime := activeModelRuntime.Swap(runtime)
 	oldProxy := proxyState.Load()
 	oldFeatures := featureRuntime.Load()
-	usageReportMu.RLock()
-	oldUsageURL, oldUsageKey := usageReportURL, usageReportKey
-	usageReportMu.RUnlock()
 	t.Cleanup(func() {
 		activeModelRuntime.Swap(previousRuntime)
 		proxyState.Store(oldProxy)
 		featureRuntime.Store(oldFeatures)
-		usageReportMu.Lock()
-		usageReportURL, usageReportKey = oldUsageURL, oldUsageKey
-		usageReportMu.Unlock()
 	})
 
 	failures := []struct {
