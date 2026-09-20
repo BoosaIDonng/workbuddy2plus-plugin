@@ -128,7 +128,15 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .modal-ft{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border);background:var(--surface);border-radius:0 0 var(--radius-lg) var(--radius-lg)}
 .modal-ft button.sec{background:var(--btn-sec);color:var(--fg)}
 .modal-ft button.sec:hover{background:var(--btn-sec-hover)}
-/* --- panel-migration: tab nav + overview tiles + batch progress --- */
+/* --- panel-migration: tab nav + overview tiles + batch progress + usage --- */
+.ub-row{display:flex;gap:8px;align-items:center;padding:6px 0;font-size:13px}
+.ub-label{min-width:130px;font-weight:600;word-break:break-all}
+.ub-track{flex:1;background:var(--surface-muted);border-radius:99px;height:14px;overflow:hidden}
+.ub-bar{height:100%;background:var(--acc);border-radius:99px;min-width:2px}
+.ub-val{min-width:110px;text-align:right;color:var(--mut);font-variant-numeric:tabular-nums}
+.recent-row{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
+.recent-row:last-child{border-bottom:none}
+.recent-time{color:var(--mut);font-variant-numeric:tabular-nums}
 .tabs{display:flex;gap:6px;margin:14px 0 4px;flex-wrap:wrap}
 .tab-btn{background:var(--surface);border:1px solid var(--border);color:var(--mut);border-radius:10px;padding:7px 16px;font-size:13px;cursor:pointer;font-weight:600}
 .tab-btn.active{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
@@ -213,8 +221,26 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
   </div>
   <div class="tabs" id="tabNav" role="tablist">
     <button type="button" class="tab-btn active" data-tab="overview" onclick="switchTab('overview',this)">总览</button>
+    <button type="button" class="tab-btn" data-tab="usage" onclick="switchTab('usage',this)">用量</button>
     <button type="button" class="tab-btn" data-tab="accounts" onclick="switchTab('accounts',this)">账号</button>
     <button type="button" class="tab-btn" data-tab="settings" onclick="switchTab('settings',this)">设置</button>
+  </div>
+  <div class="tab-view" id="tab-usage">
+    <div class="wiz-actions" style="margin-bottom:10px">
+      <select id="usageDays" class="field-input" style="max-width:140px" aria-label="统计范围" onchange="loadUsage()">
+        <option value="1">最近 1 天</option>
+        <option value="7" selected>最近 7 天</option>
+        <option value="14">最近 14 天</option>
+        <option value="30">最近 30 天</option>
+      </select>
+      <button class="sec" onclick="loadUsage(this)">刷新用量</button>
+      <span class="toggle" id="usageMeta"></span>
+    </div>
+    <div class="ov-grid" id="usageTiles"></div>
+    <div class="card set-card"><h3>模型积分分布</h3><div id="usageByModel" class="hint">加载中…</div></div>
+    <div class="card set-card"><h3>每日积分消耗</h3><div id="usageByDay" class="hint">加载中…</div></div>
+    <div class="card set-card"><h3>客户端分布</h3><div id="usageByClient" class="hint">加载中…</div></div>
+    <div class="card set-card"><h3>最近请求</h3><div id="usageRecent" class="hint">加载中…</div></div>
   </div>
   <div class="tab-view show" id="tab-overview">
     <div class="ov-grid" id="ovTiles"><div class="loading">加载中…</div></div>
@@ -1162,6 +1188,7 @@ function switchTab(name, btn){
   document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
   if(btn) btn.classList.add("active");
   if(name==="overview") loadOverview();
+  if(name==="usage") loadUsage();
   if(name==="settings") initSettings();
 }
 /* Overview: aggregated tiles + needs-attention list from GET /overview. */
@@ -1267,6 +1294,45 @@ async function runBatch(kind,accounts){
   batchRunning=false;
   toast("批量任务完成","ok","成功 "+rows.filter(r=>r.state==="done").length+" / 失败 "+rows.filter(r=>r.state==="error").length);
   load(false);
+}
+/* Usage tab: credit spend by model/day/client from official billing rows
+   (GET /usage?days=N). Bars are dependency-free CSS; data stays aggregated. */
+function usageBarRows(rows, valFmt){
+  const max=Math.max.apply(null,rows.map(r=>r.credit))||1;
+  return rows.map(r=>
+    '<div class="ub-row"><span class="ub-label">'+esc(r.label)+'</span>'+
+    '<span class="ub-track"><span class="ub-bar" style="width:'+Math.max(1,Math.round(r.credit/max*100))+'%"></span></span>'+
+    '<span class="ub-val">'+valFmt(r)+'</span></div>').join("");
+}
+async function loadUsage(btn){
+  if(btn) busy(btn,true);
+  const days=document.getElementById("usageDays").value||"7";
+  try{
+    const d=await api("/usage?days="+encodeURIComponent(days));
+    if(d.error){toast("用量加载失败","err",d.error);return}
+    document.getElementById("usageMeta").textContent=d.accounts+" 个账号 · 共 "+d.total_count+" 次请求";
+    document.getElementById("usageTiles").innerHTML=
+      '<div class="ov-tile"><div class="k">积分消耗</div><div class="v">'+esc((d.total_credit||0).toFixed(2))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">请求数</div><div class="v">'+esc(String(d.total_count||0))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">模型数</div><div class="v">'+esc(String((d.by_model||[]).length))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">统计天数</div><div class="v">'+esc(String(d.days||days))+'</div></div>';
+    const models=(d.by_model||[]).slice(0,10).map(m=>({label:m.model||"unknown",credit:m.credit,count:m.requests}));
+    document.getElementById("usageByModel").innerHTML=models.length?
+      usageBarRows(models,r=>r.credit.toFixed(2)+' 积分 · '+r.count+' 次'):"无数据";
+    const daysArr=(d.by_day||[]).map(x=>({label:x.day,credit:x.credit,count:x.count}));
+    document.getElementById("usageByDay").innerHTML=daysArr.length?
+      usageBarRows(daysArr,r=>r.credit.toFixed(2)+' 积分 · '+r.count+' 次'):"无数据";
+    const clients=(d.by_client||[]).slice(0,10).map(c=>({label:c.client,credit:c.credit,count:c.requests}));
+    document.getElementById("usageByClient").innerHTML=clients.length?
+      usageBarRows(clients,r=>r.credit.toFixed(2)+' 积分 · '+r.count+' 次'):"无数据";
+    const recent=(d.recent||[]).map(r=>
+      '<div class="recent-row"><span class="recent-time">'+esc(r.requestTimeMs?new Date(r.requestTimeMs).toLocaleString():"-")+'</span>'+
+      '<span>'+esc(r.model||"unknown")+'</span><span>'+esc((r.credit||0).toFixed(2))+' 积分</span></div>');
+    document.getElementById("usageRecent").innerHTML=recent.length?recent.join(""):"无数据";
+    if((d.errors||[]).length) toast("部分账号数据缺失","warn",d.errors.join("；"));
+  }catch(e){
+    toast("用量加载失败","err",e.message||String(e));
+  }finally{ if(btn) busy(btn,false); }
 }
 /* Settings tab: keepalive status + mirrors of existing toggles. */
 async function loadKeepaliveStatus(){

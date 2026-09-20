@@ -179,6 +179,7 @@ func managementRegistration() managementRegistrationResponse {
 			{Method: http.MethodPost, Path: base + "/keepalive", Description: "Manually refresh access tokens for all accounts (or one with auth_index)."},
 			{Method: http.MethodGet, Path: base + "/keepalive/status", Description: "Last keepalive run summary + config."},
 			{Method: http.MethodGet, Path: base + "/overview", Description: "Aggregated panel overview: account health tiles, credits totals, accounts needing attention."},
+			{Method: http.MethodGet, Path: base + "/usage", Description: "Credit spend by model/day/client from official billing rows (query: days=1..31, default 7)."},
 		},
 		Resources: []resourceRoute{
 			{Path: "/panel", Menu: "WorkBuddy", Description: "WorkBuddy dashboard: credits, check-in, plan, import."},
@@ -258,6 +259,9 @@ func handleManagement(raw []byte) ([]byte, error) {
 		accounts, _ := dash["accounts"].([]wbAccount)
 		summary, _ := dash["summary"].(map[string]any)
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, buildOverviewFromAccounts(accounts, summary)))
+	case req.Method == http.MethodGet && path == base+"/usage":
+		status, payload := handleUsageQuery(req.ManagementRequest)
+		return okEnvelope(mgmtJSONResponse(status, payload))
 	}
 	return okEnvelope(mgmtJSONResponse(http.StatusNotFound, map[string]any{"error": "not found: " + path}))
 }
