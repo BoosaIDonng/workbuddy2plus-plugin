@@ -7,7 +7,7 @@ import (
 )
 
 func TestScheduledActionsAtKeepaliveOnlyHour(t *testing.T) {
-	runCheckin, runKeepalive := scheduledActionsFor(time.Date(2026, 8, 18, 22, 0, 0, 0, time.Local))
+	runCheckin, runKeepalive, _, _ := scheduledActionsFor(time.Date(2026, 8, 18, 22, 0, 0, 0, time.Local))
 	if runCheckin {
 		t.Fatal("22:00 keepalive tick must not run auto check-in")
 	}
@@ -17,7 +17,7 @@ func TestScheduledActionsAtKeepaliveOnlyHour(t *testing.T) {
 }
 
 func TestScheduledActionsAtCheckinHour(t *testing.T) {
-	runCheckin, runKeepalive := scheduledActionsFor(time.Date(2026, 8, 18, 21, 0, 0, 0, time.Local))
+	runCheckin, runKeepalive, _, _ := scheduledActionsFor(time.Date(2026, 8, 18, 21, 0, 0, 0, time.Local))
 	if !runCheckin {
 		t.Fatal("21:00 should run auto check-in")
 	}

@@ -185,6 +185,8 @@ func managementRegistration() managementRegistrationResponse {
 			{Method: http.MethodGet, Path: base + "/tasks", Description: "Automated task history: check-in, keepalive and manual account state changes."},
 			{Method: http.MethodGet, Path: base + "/models", Description: "Full model catalog per account: display name, context window, reasoning tiers, credit multiplier, tags."},
 			{Method: http.MethodPost, Path: base + "/account/toggle", Description: "Temporarily disable or re-enable one account without deleting credentials (body: {auth_index, disabled})."},
+			{Method: http.MethodPost, Path: base + "/activity", Description: "Run the activity-map task now: report chat activity and claim growth rewards."},
+			{Method: http.MethodPost, Path: base + "/travel", Description: "Run the cat-travel task now: adopt, depart or claim for every CN account."},
 		},
 		Resources: []resourceRoute{
 			{Path: "/panel", Menu: "WorkBuddy", Description: "WorkBuddy dashboard: credits, check-in, plan, import."},
@@ -282,6 +284,12 @@ func handleManagement(raw []byte) ([]byte, error) {
 	case req.Method == http.MethodPost && path == base+"/account/toggle":
 		status, payload := handleAccountToggle(req.ManagementRequest)
 		return okEnvelope(mgmtJSONResponse(status, payload))
+	case req.Method == http.MethodPost && path == base+"/activity":
+		go runActivityTask() // minutes-long sweep; the panel polls /tasks
+		return okEnvelope(mgmtJSONResponse(http.StatusAccepted, map[string]any{"started": true}))
+	case req.Method == http.MethodPost && path == base+"/travel":
+		go runTravelTask()
+		return okEnvelope(mgmtJSONResponse(http.StatusAccepted, map[string]any{"started": true}))
 	}
 	return okEnvelope(mgmtJSONResponse(http.StatusNotFound, map[string]any{"error": "not found: " + path}))
 }
@@ -403,7 +411,9 @@ func mutatingManagementPath(path string) bool {
 		base + "/trial",
 		base + "/select",
 		base + "/keepalive",
-		base + "/account/toggle":
+		base + "/account/toggle",
+		base + "/activity",
+		base + "/travel":
 		return true
 	}
 	return false

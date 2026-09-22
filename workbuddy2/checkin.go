@@ -43,17 +43,22 @@ func scheduledInCurrentHour(now time.Time, hours []int) bool {
 	return false
 }
 
-func scheduledActionsFor(now time.Time) (runCheckin, runKeepalive bool) {
-	return scheduledInCurrentHour(now, checkinHours), scheduledInCurrentHour(now, keepaliveHours)
+func scheduledActionsFor(now time.Time) (runCheckin, runKeepalive, runActivity, runTravel bool) {
+	return scheduledInCurrentHour(now, checkinHours),
+		scheduledInCurrentHour(now, keepaliveHours),
+		scheduledInCurrentHour(now, activityHours),
+		scheduledInCurrentHour(now, travelHours)
 }
 
 func nextCheckinTime(now time.Time) time.Time {
 	var earliest time.Time
-	// Consider both checkin and keepalive schedules so the timer wakes up for
-	// whichever fires first (e.g. 21:00 checkin vs 22:00 keepalive → 21:00 wins,
-	// then 22:00 keepalive fires on the next tick).
+	// Consider every task's schedule so the timer wakes for whichever fires
+	// first (e.g. 09:00 checkin+travel, 10:00 activity, 21:00 checkin, 22:00
+	// keepalive) — each tick handles all slots falling in that hour.
 	hours := append([]int{}, checkinHours...)
 	hours = append(hours, keepaliveHours...)
+	hours = append(hours, activityHours...)
+	hours = append(hours, travelHours...)
 	for _, h := range hours {
 		t := time.Date(now.Year(), now.Month(), now.Day(), h, 0, 0, 0, now.Location())
 		if !t.After(now) {
@@ -75,13 +80,31 @@ func schedulerLoop(stop chan struct{}) {
 			timer.Stop()
 			return
 		case <-timer.C:
-			runCheckin, runKeepalive := scheduledActionsFor(time.Now())
+			runCheckin, runKeepalive, runActivity, runTravel := scheduledActionsFor(time.Now())
+			// Tasks in the same slot run concurrently: the activity sweep takes
+			// minutes (5 reports × 1.5s per account) and must not delay the
+			// others. Each task owns its own per-account pacing.
+			var wg sync.WaitGroup
+			launch := func(fn func()) {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					fn()
+				}()
+			}
 			if runCheckin {
-				runAutoCheckin()
+				launch(runAutoCheckin)
 			}
 			if runKeepalive {
-				runTokenKeepalive()
+				launch(func() { runTokenKeepalive() })
 			}
+			if runActivity {
+				launch(runActivityTask)
+			}
+			if runTravel {
+				launch(runTravelTask)
+			}
+			wg.Wait()
 		}
 	}
 }

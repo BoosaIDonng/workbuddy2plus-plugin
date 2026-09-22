@@ -20,6 +20,29 @@ import (
 // check-in schedule: 09:00 and 21:00 local time.
 var checkinHours = []int{9, 21}
 
+// activityHours / travelHours drive the two growth tasks (wb_growth.go,
+// wb_travel.go). Local-time hour lists, same shape as checkinHours.
+var (
+	activityHours = []int{10}
+	travelHours   = []int{9, 21}
+	activityAuto  = true
+	travelAuto    = true
+	activityMu    sync.RWMutex
+	travelMu      sync.RWMutex
+)
+
+func activityEnabled() bool {
+	activityMu.RLock()
+	defer activityMu.RUnlock()
+	return activityAuto
+}
+
+func travelEnabled() bool {
+	travelMu.RLock()
+	defer travelMu.RUnlock()
+	return travelAuto
+}
+
 // plugin-level config decoded from plugin.register/reconfigure config_yaml.
 var (
 	checkinAuto   = true // enabled by default
@@ -42,6 +65,8 @@ func configure(raw []byte) error {
 	nextLifecycleAuto := true
 	nextSchedulerMode := schedulerModeOff // reset to default on reconfigure
 	nextKeepaliveAuto := true
+	nextActivityAuto := true
+	nextTravelAuto := true
 	nextMgmtKey := ""
 	nextProxyURL := ""
 
@@ -75,6 +100,12 @@ func configure(raw []byte) error {
 	if value, ok := configScalars["token_keepalive"]; ok {
 		nextKeepaliveAuto = enabledConfigValue(value)
 	}
+	if value, ok := configScalars["activity_auto"]; ok {
+		nextActivityAuto = enabledConfigValue(value)
+	}
+	if value, ok := configScalars["travel_auto"]; ok {
+		nextTravelAuto = enabledConfigValue(value)
+	}
 
 	nextProxyURL, err = parseProxyURLConfig(configYAML)
 	if err != nil {
@@ -105,6 +136,14 @@ func configure(raw []byte) error {
 	keepaliveAutoMu.Lock()
 	keepaliveAuto = nextKeepaliveAuto
 	keepaliveAutoMu.Unlock()
+
+	activityMu.Lock()
+	activityAuto = nextActivityAuto
+	activityMu.Unlock()
+
+	travelMu.Lock()
+	travelAuto = nextTravelAuto
+	travelMu.Unlock()
 
 	// management key: config_yaml > env > keep existing. Empty stays empty
 	// (plugin-layer auth disabled, host middleware still guards).
@@ -206,7 +245,7 @@ func parseTopLevelConfigScalars(raw []byte) (map[string]string, error) {
 
 		expected := ""
 		switch key.Value {
-		case "checkin_auto", "lifecycle_auto", "token_keepalive":
+		case "checkin_auto", "lifecycle_auto", "token_keepalive", "activity_auto", "travel_auto":
 			expected = "boolean"
 		case "scheduler_mode", "usage_report_url", "usage_report_key", "management_key":
 			expected = "string"
