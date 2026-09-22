@@ -107,8 +107,8 @@ func TestParseTopLevelConfigScalarsRejectsWrongTypesAndMerges(t *testing.T) {
 		name string
 		raw  string
 	}{
-		{name: "management sequence", raw: "management_key: [replacement]\n"},
-		{name: "management boolean", raw: "management_key: true\n"},
+		{name: "scheduler sequence", raw: "scheduler_mode: [credits]\n"},
+		{name: "scheduler boolean", raw: "scheduler_mode: true\n"},
 		{name: "lifecycle sequence", raw: "lifecycle_auto: [false]\n"},
 		{name: "scheduler incompatible tag", raw: "scheduler_mode: !!seq credits\n"},
 		{name: "usage key mapping", raw: "usage_report_key: {value: secret}\n"},

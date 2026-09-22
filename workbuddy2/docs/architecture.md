@@ -228,10 +228,13 @@ panel.html → /v0/management/plugins/workbuddy/accounts
    any character outside `[a-zA-Z0-9_-]` and caps length at 64, preventing
    path traversal when importing credentials with attacker-controlled UIDs.
 
-5. **Plugin-layer management auth is opt-in.** When `management_key` is
-   unset the plugin defers entirely to CPA's management middleware
-   (historical default). When set, mutating endpoints require a constant-time
-   Bearer match plus a per-IP token bucket.
+5. **Management authorization belongs to the CPA host.** The plugin enforces no
+   key of its own: CPA's remote-management middleware requires the management
+   key on every `/v0/management/*` request and bans an IP after repeated
+   failures. The panel reads that key from the host's same-origin
+   `localStorage["cli-proxy-auth"]` (or `?key=`) and forwards it. A
+   plugin-owned key was removed because it rejected the host's key — the only
+   credential the panel can obtain without asking the user.
 
 6. **Scheduler defers by default.** `scheduler_mode: off` (default) makes
    `handleSchedulerPick` always return `Handled: false` so CPA's built-in

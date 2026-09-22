@@ -9,12 +9,12 @@ import (
 
 func TestRegistrationConfigFieldsMatchImplementedConfig(t *testing.T) {
 	fields := wbRegistration().Metadata.ConfigFields
-	managementKeyCount := 0
 	for _, field := range fields {
 		switch field.Name {
-		case "management_key":
-			managementKeyCount++
-		case "proxy-url", "proxy_url", "usage_report_url", "usage_report_key":
+		case "management_key", "proxy-url", "proxy_url", "usage_report_url", "usage_report_key":
+			// management_key was a second key enforced by the plugin itself, and
+			// it rejected the host's own key — the only credential the panel can
+			// obtain automatically. Authorization belongs to the CPA host.
 			t.Fatalf("removed config field %q must not be registered", field.Name)
 		case "scheduler_mode":
 			if strings.Contains(strings.ToLower(field.Description), "highest remaining") {
@@ -24,9 +24,6 @@ func TestRegistrationConfigFieldsMatchImplementedConfig(t *testing.T) {
 				t.Fatal("scheduler_mode description must document panel-selected routing")
 			}
 		}
-	}
-	if managementKeyCount != 1 {
-		t.Fatalf("management_key config field count = %d", managementKeyCount)
 	}
 }
 

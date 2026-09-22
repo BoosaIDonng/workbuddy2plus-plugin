@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
 	"strings"
 	"sync"
 
@@ -47,15 +46,6 @@ func travelEnabled() bool {
 var (
 	checkinAuto   = true // enabled by default
 	checkinAutoMu sync.RWMutex
-
-	// managementAPIKey: plugin-layer auth for /v0/management/plugins/workbuddy/*
-	// write endpoints. When empty, plugin relies on host-side auth (CPA's
-	// management middleware) — that's the historical default and stays
-	// backward-compatible. When set via config_yaml management_key: or env
-	// WB_MANAGEMENT_KEY, handleManagement enforces constant-time Bearer match
-	// plus per-IP token-bucket rate limiting on mutating endpoints.
-	managementAPIKey   = ""
-	managementAPIKeyMu sync.RWMutex
 )
 
 // configure decodes plugin config from the lifecycle request.
@@ -67,7 +57,6 @@ func configure(raw []byte) error {
 	nextKeepaliveAuto := true
 	nextActivityAuto := true
 	nextTravelAuto := true
-	nextMgmtKey := ""
 	nextProxyURL := ""
 
 	var configYAML []byte
@@ -96,7 +85,6 @@ func configure(raw []byte) error {
 	if configScalars["scheduler_mode"] == schedulerModeCredits {
 		nextSchedulerMode = schedulerModeCredits
 	}
-	nextMgmtKey = configScalars["management_key"]
 	if value, ok := configScalars["token_keepalive"]; ok {
 		nextKeepaliveAuto = enabledConfigValue(value)
 	}
@@ -144,15 +132,6 @@ func configure(raw []byte) error {
 	travelMu.Lock()
 	travelAuto = nextTravelAuto
 	travelMu.Unlock()
-
-	// management key: config_yaml > env > keep existing. Empty stays empty
-	// (plugin-layer auth disabled, host middleware still guards).
-	if nextMgmtKey == "" {
-		nextMgmtKey = strings.TrimSpace(os.Getenv("WB_MANAGEMENT_KEY"))
-	}
-	managementAPIKeyMu.Lock()
-	managementAPIKey = nextMgmtKey
-	managementAPIKeyMu.Unlock()
 
 	ensureScheduler()
 	currentModelRuntime().commitFeatureRuntime(nextFeatures)
@@ -247,7 +226,7 @@ func parseTopLevelConfigScalars(raw []byte) (map[string]string, error) {
 		switch key.Value {
 		case "checkin_auto", "lifecycle_auto", "token_keepalive", "activity_auto", "travel_auto":
 			expected = "boolean"
-		case "scheduler_mode", "usage_report_url", "usage_report_key", "management_key":
+		case "scheduler_mode", "usage_report_url", "usage_report_key":
 			expected = "string"
 		default:
 			continue

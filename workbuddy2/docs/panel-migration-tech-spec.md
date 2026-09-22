@@ -26,8 +26,9 @@
 
 1. `managementRegistration()` 声明路由（自动出现在 CPA 插件管理 UI）。
 2. `handleManagement` switch 新增 case，统一 `mgmtJSONResponse` 包响应。
-3. 写路径加入 `mutatingManagementPath()`，确保无 management_key 时也被宿主中间件保护。
-4. 复用插件层 Bearer 鉴权 + per-IP token bucket（checkManagementAuth/allowManagementRequest）。
+3. 鉴权全部交给宿主 remote-management 中间件：插件不自带密钥、不做限流（`mutatingManagementPath`/
+   `checkManagementAuth`/`allowManagementRequest` 已删除——插件密钥会拒绝宿主密钥，而那是面板
+   唯一能自动拿到的凭证）。
 5. 需要 auth 的操作继续经 host.auth.list/get/save Host API（panelHostAuthList/hostAuthGetBundle/
    syncAuthNote 现有函数），绝不触碰文件系统。
 

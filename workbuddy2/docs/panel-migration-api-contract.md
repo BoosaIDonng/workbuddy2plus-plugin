@@ -2,9 +2,9 @@
 
 > 基准路径：`<MANAGEMENT_BASE_PATH>/plugins/workbuddy`（宿主注入，运行时从
 > `__WB_MANAGEMENT_BASE_PATH_JSON__` 获取，禁止硬编码 `/v0/management`）。
-> 鉴权：配置 management_key 时所有端点需 `Authorization: Bearer <key>`（未配置时读端点放行、
-> 写端点仍由宿主管理中间件保护）；全部端点受 per-IP token bucket 限流（5 burst / 6s 补充），
-> 超限 429 `{"error":"rate limit exceeded, try again later"}`。
+> 鉴权：由 CPA 宿主负责——宿主的 remote-management 中间件要求每个 `/v0/management/*`
+> 请求携带管理密钥，多次失败后封禁 IP。插件不再自带第二套密钥，也不做限流：面板从宿主
+> 同源 `localStorage["cli-proxy-auth"]`（或 `?key=`）取密钥并作为 Bearer 转发。
 > 错误信封：非 2xx 一律 `{"error": "<脱敏消息>"}`；成功为域对象（无包裹层）。
 
 ## 1. 既有端点（本次零变更，列全以防回归）

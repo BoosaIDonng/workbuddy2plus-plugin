@@ -1,10 +1,9 @@
-// panel_ratelimit_test.go is the regression check for the management rate
-// limiter: a panel session must be able to issue the requests a normal UI flow
-// makes (initial load + walking the tabs) without hitting 429.
+// panel_ratelimit_test.go pins the panel's request-volume contract.
 //
-// The bug it locks down: with the host not forwarding a client IP every
-// request shares one bucket, so the old 5-burst limit was exhausted by simply
-// opening the panel and clicking through the tabs.
+// The plugin used to run its own per-IP token bucket with a 5-request burst,
+// which made a normal panel session hit 429 while walking the tabs. That limiter
+// is gone: the host owns throttling (and bans an IP after repeated failures), so
+// the plugin must answer every request a normal UI flow makes.
 package main
 
 import (
@@ -26,71 +25,36 @@ var panelTabRequests = []string{
 	"/models",    // switchTab("models")
 }
 
-// TestPanelTabWalkDoesNotRateLimit drives the real dispatch path with the
-// management key configured and asserts every request in a normal panel walk
-// is answered (no 429).
-func TestPanelTabWalkDoesNotRateLimit(t *testing.T) {
-	managementAPIKeyMu.Lock()
-	oldKey := managementAPIKey
-	managementAPIKey = "test-key"
-	managementAPIKeyMu.Unlock()
-	t.Cleanup(func() {
-		managementAPIKeyMu.Lock()
-		managementAPIKey = oldKey
-		managementAPIKeyMu.Unlock()
-		resetMgmtRateLimitForTest()
-	})
-	resetMgmtRateLimitForTest()
-
-	for _, path := range panelTabRequests {
-		req := pluginapi.ManagementRequest{
-			Method:  http.MethodGet,
-			Path:    loadedManagementBasePath() + "/plugins/" + providerName + path,
-			Headers: http.Header{"Authorization": []string{"Bearer test-key"}},
-		}
-		resp := managementResponseForTest(t, req)
-		if resp.StatusCode == http.StatusTooManyRequests {
-			t.Fatalf("panel request %s hit the rate limit (%d); a normal tab walk must not 429",
-				path, resp.StatusCode)
+// TestPanelTabWalkIsNeverThrottled drives the real dispatch path and asserts a
+// normal panel walk is always answered. Repeated passes must also stay clean:
+// the plugin keeps no cross-request state a second pass could exhaust.
+func TestPanelTabWalkIsNeverThrottled(t *testing.T) {
+	base := loadedManagementBasePath() + "/plugins/" + providerName
+	for pass := 0; pass < 3; pass++ {
+		for _, path := range panelTabRequests {
+			resp := managementResponseForTest(t, pluginapi.ManagementRequest{
+				Method: http.MethodGet,
+				Path:   base + path,
+			})
+			if resp.StatusCode == http.StatusTooManyRequests {
+				t.Fatalf("pass %d: panel request %s was throttled (%d); the plugin must not rate limit",
+					pass, path, resp.StatusCode)
+			}
 		}
 	}
 }
 
-// resetMgmtRateLimitForTest clears the per-IP token buckets so a test starts
-// from a full burst. The bucket map is process-global (a real request arrives
-// with no client IP and shares one bucket), so tests must reset it explicitly.
-func resetMgmtRateLimitForTest() {
-	mgmtRateLimitMu.Lock()
-	defer mgmtRateLimitMu.Unlock()
-	mgmtRateLimit = map[string]*mgmtRateEntry{}
-}
-
-// TestAuthFailureRateLimitIsScopedToFailures documents the intended semantics:
-// successful requests do not consume tokens, so a valid key never rate-limits
-// itself — only failed authentications do (brute-force protection).
-func TestAuthFailureRateLimitIsScopedToFailures(t *testing.T) {
-	managementAPIKeyMu.Lock()
-	oldKey := managementAPIKey
-	managementAPIKey = "good-key"
-	managementAPIKeyMu.Unlock()
-	t.Cleanup(func() {
-		managementAPIKeyMu.Lock()
-		managementAPIKey = oldKey
-		managementAPIKeyMu.Unlock()
-		resetMgmtRateLimitForTest()
-	})
-	resetMgmtRateLimitForTest()
-
+// TestManySequentialRequestsAreServed: a long session (60 requests) must not
+// degrade — the regression guard for the removed burst-of-5 bucket.
+func TestManySequentialRequestsAreServed(t *testing.T) {
 	base := loadedManagementBasePath() + "/plugins/" + providerName
-	// Many successful calls in a row must all pass.
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 60; i++ {
 		resp := managementResponseForTest(t, pluginapi.ManagementRequest{
-			Method:  http.MethodGet,
-			Path:    base + "/keepalive/status",
-			Headers: http.Header{"Authorization": []string{"Bearer good-key"}},
+			Method: http.MethodGet,
+			Path:   base + "/keepalive/status",
 		})
 		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("call %d with a valid key got %d, want 200", i, resp.StatusCode)
+			t.Fatalf("request %d got %d, want 200", i+1, resp.StatusCode)
 		}
 	}
 }

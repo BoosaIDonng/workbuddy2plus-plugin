@@ -4,7 +4,6 @@
 package main
 
 import (
-	"crypto/subtle"
 	_ "embed"
 	"encoding/json"
 	"net/http"
@@ -208,21 +207,12 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return okEnvelope(mgmtHTMLResponse(servePanel(sub)))
 	}
 
-	// Plugin-layer auth applies to every management API route when a key is
-	// configured. Static panel resources return above so the login UI remains
-	// reachable; the panel sends the Bearer key on each JSON request.
-	mutating := req.Method == http.MethodPost || mutatingManagementPath(path)
-	if loadedManagementKey() != "" || mutating {
-		if status, msg := checkManagementAuth(req.ManagementRequest); status != 0 {
-			ip := managementClientIP(req.ManagementRequest)
-			if !allowManagementRequest(ip) {
-				return okEnvelope(mgmtJSONResponse(http.StatusTooManyRequests, map[string]any{
-					"error": "rate limit exceeded, try again later",
-				}))
-			}
-			return okEnvelope(mgmtJSONResponse(status, map[string]any{"error": msg}))
-		}
-	}
+	// Authorization is owned by the CPA host: its remote-management middleware
+	// requires the management key on every /v0/management/* request and bans an
+	// IP after repeated failures. The plugin deliberately enforces nothing of its
+	// own — a second key here would reject the host's own key, which is the only
+	// credential the panel can obtain automatically.
+	// The panel still forwards the host key as a Bearer token; see panel.html.
 
 	base := loadedManagementBasePath() + "/plugins/" + providerName
 	switch {
@@ -306,199 +296,6 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return okEnvelope(mgmtJSONResponse(http.StatusAccepted, map[string]any{"started": true}))
 	}
 	return okEnvelope(mgmtJSONResponse(http.StatusNotFound, map[string]any{"error": "not found: " + path}))
-}
-
-// -----------------------------------------------------------------------------
-// Plugin-layer management auth + rate limit (v0.6.31)
-// -----------------------------------------------------------------------------
-//
-// When management_key is configured (config_yaml or WB_MANAGEMENT_KEY env), all
-// management API routes under /v0/management/plugins/workbuddy/* require a
-// matching Bearer token. Static panel resources stay public so the UI can load
-// and prompt for the key; the panel itself supplies the key on every API call.
-//
-// A per-IP token-bucket rate limiter guards against brute-force when the key
-// check fails repeatedly.
-
-const (
-	mgmtRateLimitCapacity = 5                // burst
-	mgmtRateLimitRefill   = time.Minute / 10 // 1 token per 6s
-	mgmtRateLimitTTL      = 10 * time.Minute // idle entry eviction
-)
-
-type mgmtRateEntry struct {
-	tokens   float64
-	lastSeen time.Time
-}
-
-var (
-	mgmtRateLimit   = map[string]*mgmtRateEntry{}
-	mgmtRateLimitMu sync.Mutex
-)
-
-func loadedManagementKey() string {
-	managementAPIKeyMu.RLock()
-	defer managementAPIKeyMu.RUnlock()
-	return managementAPIKey
-}
-
-// checkManagementAuth returns an HTTP status + error message when the request
-// should be rejected. status=0 means allow.
-func checkManagementAuth(req pluginapi.ManagementRequest) (int, string) {
-	want := loadedManagementKey()
-	if want == "" {
-		return 0, "" // plugin-layer auth disabled; rely on host middleware
-	}
-	got := strings.TrimSpace(req.Headers.Get("Authorization"))
-	if !strings.HasPrefix(got, "Bearer ") {
-		return http.StatusUnauthorized, "missing Bearer token"
-	}
-	token := strings.TrimSpace(strings.TrimPrefix(got, "Bearer "))
-	if subtle.ConstantTimeCompare([]byte(token), []byte(want)) != 1 {
-		return http.StatusForbidden, "invalid management key"
-	}
-	return 0, ""
-}
-
-// allowManagementRequest applies token buckets to a failed authentication. It
-// always consumes from the shared global bucket and, when a client identifier is
-// available, from that client's bucket too — both must allow.
-//
-// The global bucket is what makes the limit real: the per-IP key comes from a
-// client-supplied header (see managementClientIP), so an attacker rotating
-// X-Forwarded-For would otherwise get a fresh burst per request and never be
-// throttled at all.
-func allowManagementRequest(ip string) bool {
-	mgmtRateLimitMu.Lock()
-	defer mgmtRateLimitMu.Unlock()
-	now := time.Now()
-	// Check both buckets before consuming either, so a rejection does not burn
-	// the other bucket's tokens.
-	if !mgmtBucketAllows(mgmtRateLimitGlobalKey, now) {
-		return false
-	}
-	if ip != "" && !mgmtBucketAllows(ip, now) {
-		return false
-	}
-	mgmtConsumeBucket(mgmtRateLimitGlobalKey, now)
-	if ip != "" {
-		mgmtConsumeBucket(ip, now)
-	}
-	mgmtRateLimitEvict(now)
-	return true
-}
-
-// mgmtRateLimitGlobalKey names the bucket shared by all callers.
-const mgmtRateLimitGlobalKey = "_global"
-
-// mgmtRateLimitMaxEntries bounds the per-IP map so a header-rotating attacker
-// cannot grow it without limit.
-const mgmtRateLimitMaxEntries = 4096
-
-// mgmtBucketAllows reports whether the named bucket has a token available,
-// refilling it in place.
-func mgmtBucketAllows(key string, now time.Time) bool {
-	e, ok := mgmtRateLimit[key]
-	if !ok {
-		return true // a fresh bucket starts full
-	}
-	return mgmtRefilled(e, now).tokens >= 1
-}
-
-// mgmtConsumeBucket refills the named bucket and spends one token.
-func mgmtConsumeBucket(key string, now time.Time) {
-	e, ok := mgmtRateLimit[key]
-	if !ok {
-		e = &mgmtRateEntry{tokens: mgmtRateLimitCapacity, lastSeen: now}
-		mgmtRateLimit[key] = e
-	}
-	e = mgmtRefilled(e, now)
-	e.tokens--
-	e.lastSeen = now
-}
-
-// mgmtRefilled applies elapsed-time refill, capped at the burst size.
-func mgmtRefilled(e *mgmtRateEntry, now time.Time) *mgmtRateEntry {
-	e.tokens += float64(now.Sub(e.lastSeen)) / float64(mgmtRateLimitRefill)
-	if e.tokens > mgmtRateLimitCapacity {
-		e.tokens = mgmtRateLimitCapacity
-	}
-	return e
-}
-
-// mgmtRateLimitEvict drops idle buckets, and hard-caps the map when an attacker
-// keeps every entry fresh with rotating keys. Runs on every call (the old code
-// only swept above 1024 entries, so a slow attacker kept the map growing).
-func mgmtRateLimitEvict(now time.Time) {
-	if len(mgmtRateLimit) <= mgmtRateLimitMaxEntries {
-		return
-	}
-	for k, v := range mgmtRateLimit {
-		if k == mgmtRateLimitGlobalKey {
-			continue // never evict the bucket that cannot be bypassed
-		}
-		if now.Sub(v.lastSeen) > mgmtRateLimitTTL {
-			delete(mgmtRateLimit, k)
-		}
-	}
-	// Still over the cap: drop the least recently seen entries.
-	for len(mgmtRateLimit) > mgmtRateLimitMaxEntries {
-		oldestKey := ""
-		var oldest time.Time
-		for k, v := range mgmtRateLimit {
-			if k == mgmtRateLimitGlobalKey {
-				continue
-			}
-			if oldestKey == "" || v.lastSeen.Before(oldest) {
-				oldestKey, oldest = k, v.lastSeen
-			}
-		}
-		if oldestKey == "" {
-			return
-		}
-		delete(mgmtRateLimit, oldestKey)
-	}
-}
-
-// managementClientIP extracts a best-effort client identifier for rate limiting.
-// CPA host doesn't currently forward RemoteAddr, so fall back to X-Forwarded-For
-// / X-Real-IP headers if the deployment adds them via a reverse proxy.
-//
-// This value is advisory, not a security boundary: the headers are
-// client-supplied and the first X-Forwarded-For element is whatever the caller
-// claims. allowManagementRequest therefore always consumes from the global
-// bucket as well, so rotating this value cannot buy extra attempts.
-func managementClientIP(req pluginapi.ManagementRequest) string {
-	if xff := strings.TrimSpace(req.Headers.Get("X-Forwarded-For")); xff != "" {
-		if i := strings.Index(xff, ","); i > 0 {
-			return strings.TrimSpace(xff[:i])
-		}
-		return xff
-	}
-	if xr := strings.TrimSpace(req.Headers.Get("X-Real-Ip")); xr != "" {
-		return xr
-	}
-	return ""
-}
-
-// mutatingManagementPath reports whether the path performs a write (checkin,
-// import, trial claim, select, refresh, config toggle). Read endpoints pass.
-func mutatingManagementPath(path string) bool {
-	base := loadedManagementBasePath() + "/plugins/" + providerName
-	switch path {
-	case base + "/refresh",
-		base + "/checkin",
-		base + "/checkin/config",
-		base + "/import",
-		base + "/trial",
-		base + "/select",
-		base + "/keepalive",
-		base + "/account/toggle",
-		base + "/activity",
-		base + "/travel":
-		return true
-	}
-	return false
 }
 
 func mgmtJSONResponse(status int, v any) pluginapi.ManagementResponse {

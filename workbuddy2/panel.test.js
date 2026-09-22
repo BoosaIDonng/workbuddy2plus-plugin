@@ -108,6 +108,41 @@ function fakeResponse(status, contentType, body) {
   };
 }
 
+// panelObfuscate mirrors the host's secure-storage encoding: salt|host|UA as the
+// XOR key, then base64, behind the "enc::v1::" prefix. Used to build the
+// localStorage value the CPA main panel leaves behind.
+function panelObfuscate(plaintext, host, userAgent) {
+  const salt = "cli-proxy-api-webui::secure-storage";
+  const keyBytes = Buffer.from(salt + "|" + host + "|" + userAgent, "utf8");
+  const data = Buffer.from(plaintext, "utf8");
+  const xored = Buffer.alloc(data.length);
+  for (let i = 0; i < data.length; i++) xored[i] = data[i] ^ keyBytes[i % keyBytes.length];
+  return "enc::v1::" + xored.toString("base64");
+}
+
+test("host key is read from localStorage even when the panel is not framed", () => {
+  const host = "localhost";
+  const userAgent = "node-test";
+  const stored = JSON.stringify({ state: { managementKey: "host-key" }, version: 0 });
+  let topAccessed = false;
+  const { context } = loadPanel({
+    localStorage: {
+      getItem() { return panelObfuscate(stored, host, userAgent); },
+      setItem() {},
+    },
+    location: { href: "http://localhost/panel", search: "", pathname: "/panel", hash: "", host },
+  });
+  // Simulate a direct (non-framed) open: reading window.top must not be required
+  // for the key to be found.
+  Object.defineProperty(context, "top", {
+    get() { topAccessed = true; return context; },
+  });
+
+  assert.equal(context.readPanelKey(), "host-key");
+  assert.equal(context.getKey(), "host-key");
+  assert.equal(topAccessed, false, "key lookup must not depend on being framed");
+});
+
 test("query key replaces session key once and is removed from URL", () => {
   let replaced = "";
   let localWrites = 0;

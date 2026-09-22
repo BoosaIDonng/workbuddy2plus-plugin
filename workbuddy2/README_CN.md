@@ -119,10 +119,9 @@ plugins:
       usage_report_url: "http://cpa-manager-plus:18317/v0/management/usage/import"
       usage_report_key: ""
 
-      # 插件层 management 鉴权。设置后所有 /v0/management/plugins/workbuddy/*
-      # 写端点要求该 Bearer token。空（默认）则只靠宿主 management middleware。
-      # 也可从 WB_MANAGEMENT_KEY 环境变量读。
-      management_key: ""
+      # 鉴权由 CPA 宿主负责：宿主的 remote-management 中间件要求每个
+      # /v0/management/* 请求携带管理密钥，并在多次失败后封禁 IP。
+      # 插件不再自带第二套密钥——面板读取宿主的密钥并转发。
 ```
 
 模型 alias 和排除走 CPA 原生 `oauth-model-alias` 和 `oauth-excluded-models`

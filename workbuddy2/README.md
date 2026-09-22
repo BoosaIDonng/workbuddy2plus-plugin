@@ -136,11 +136,10 @@ plugins:
       usage_report_url: "http://cpa-manager-plus:18317/v0/management/usage/import"
       usage_report_key: ""
 
-      # Plugin-layer management auth. When set, all mutating endpoints under
-      # /v0/management/plugins/workbuddy/* require this Bearer token.
-      # When empty (default) the host's management middleware is the only
-      # guard. Also readable from WB_MANAGEMENT_KEY env var.
-      management_key: ""
+      # Authorization is owned by the CPA host: its remote-management
+      # middleware requires the management key on every /v0/management/*
+      # request and bans an IP after repeated failures. The plugin enforces no
+      # key of its own — the panel reads the host's key and forwards it.
 ```
 
 Model aliases and exclusions are handled natively by CPA's
