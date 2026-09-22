@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.8.1 - 2026-09-22
+
+### Correctness and documentation
+
+- Preserve top-level auth metadata, including `device_token`, across import,
+  lifecycle, and manual account-state writes; reuse it for billing headers.
+- Preserve unknown top-level JSON values as raw JSON while rewriting auth files,
+  avoiding numeric precision loss in metadata the plugin does not own.
+- Keep account-pool state intact when an auth snapshot is incomplete.
+- Record scheduled check-in outcomes and granted credits in task history.
+- Remove the scheduler hot-path auth list/get N+1 RPC sequence.
+- Invalidate manual account-toggle state with the host auth entry ID.
+- Merge check-in state into manual credit refreshes.
+- Consolidate user documentation into the Chinese-first root `README.md`.
+
 ## 2.8.0
 
 ### Credit visibility

@@ -3,6 +3,28 @@
 本文件是 v0.8.0 社区交付版的验收标准。每一项都必须 **量化可测**，
 跑通验证脚本才能宣称完成。
 
+## 2.8.1 maintenance acceptance
+
+本次维护的完成条件：
+
+- Auth mutations preserve existing top-level metadata, including `device_token`.
+- A partial host-auth snapshot never deletes existing account-pool state.
+- Scheduled check-in writes the same structured task-credit record as manual check-in.
+- Scheduler picks do not issue a host auth list/get N+1 sequence on every request.
+- Account toggle invalidates cache and lifecycle state using the host entry ID.
+- Manual credit refresh merges the returned check-in snapshot into the card.
+- The repository has one Chinese-first root `README.md`; source-directory README
+  files are removed or redirected only when they are not user documentation.
+
+Verification commands:
+
+```bash
+go test -race -count=1 ./...
+go vet ./...
+node --test panel.test.js
+git diff --check
+```
+
 ## A. 代码质量（自动化可验）
 
 | 指标 | 目标 | 测量方式 |
@@ -57,8 +79,7 @@
 
 | 文件 | 必须包含 |
 |---|---|
-| `README.md` | Features / Quickstart / Configuration / Lifecycle / Development / License |
-| `README_CN.md` | 中文版 |
+| Root `README.md` | 中文主文档：功能 / 快速开始 / 配置 / 生命周期 / 开发 / 许可 |
 | `CHANGELOG.md` | Keep a Changelog 格式，每版本日期 |
 | `docs/architecture.md` | 模块图 + 数据流 + 关键设计决策 + 与 CPA 的集成点 |
 | `docs/development.md` | 本地构建 / 测试 / 调试 / 发布流程 |
@@ -74,7 +95,7 @@
 | 硬编码 secret | 0 |
 | 路径穿越 | UID 白名单 + `isSafeWorkbuddyAuthPath` 双保险 |
 | 敏感日志 | `redactSecrets` 覆盖 Bearer/JWT/kv/裸 JWT 四种形态 |
-| 鉴权 | 插件层 constant-time Bearer + per-IP token bucket |
+| 鉴权 | 由 CPA `remote-management` 统一校验；插件不维护第二套管理密钥 |
 | 前端 | 无 innerHTML 注入用户/上游可控字段进 JS 上下文 |
 
 ## G. 功能实测（必须通过）
@@ -91,7 +112,7 @@
 | Credits 查询 | 200 + packages 数组完整 |
 | 耗尽账号调度 | 切换到非耗尽账号 |
 | 面板载入 | 0 JS error + 0 `parse failed` |
-| CPAMP usage 上报 | 请求后 5s 内 CPAMP `/v0/management/usage` 出现该记录 |
+| Usage 记录 | 插件不转发 CPAMP；宿主继续写入自己的 usage manager，插件仅确认 hook |
 | 多平台编译 | D 节全部通过 |
 
 ## H. 兼容性（向后）

@@ -335,7 +335,7 @@ type registrationCapability struct {
 }
 
 // version is injected at build time via -ldflags "-X main.version=...".
-var version = "2.8.0"
+var version = "2.8.1"
 
 func wbRegistration() registration {
 	return registration{
@@ -407,8 +407,9 @@ var modelAliasCache struct {
 
 // storedAuth is the on-disk shape of a workbuddy credential.
 type storedAuth struct {
-	Auth    storedTokens  `json:"auth"`
-	Account storedAccount `json:"account"`
+	Auth        storedTokens  `json:"auth"`
+	Account     storedAccount `json:"account"`
+	DeviceToken string        `json:"device_token,omitempty"`
 }
 
 type storedTokens struct {
@@ -475,12 +476,14 @@ func parseStored(raw []byte) (*storedAuth, error) {
 			UID          string `json:"uid"`
 			EnterpriseID string `json:"enterpriseId"`
 			Nickname     string `json:"nickname"`
+			DeviceToken  string `json:"device_token"`
 		}
 		if err := json.Unmarshal(raw, &flat); err != nil {
 			return nil, fmt.Errorf("storage_parse_error: %w", err)
 		}
 		sa.Auth = storedTokens{AccessToken: flat.AccessToken, RefreshToken: flat.RefreshToken, ExpiresAt: flat.ExpiresAt, Domain: flat.Domain}
 		sa.Account = storedAccount{UID: flat.UID, EnterpriseID: flat.EnterpriseID, Nickname: flat.Nickname}
+		sa.DeviceToken = flat.DeviceToken
 	}
 	if sa.Auth.AccessToken == "" {
 		return nil, fmt.Errorf("parse_error: missing accessToken")
@@ -556,6 +559,9 @@ func backendHeaders(req *http.Request, sa *storedAuth) {
 		req.Header.Set("X-Domain", sa.Auth.Domain)
 	} else {
 		req.Header.Set("X-No-Department-Info", "1")
+	}
+	if sa.DeviceToken != "" {
+		req.Header.Set("X-Device-Token", sa.DeviceToken)
 	}
 	req.Header.Set("X-Product", "SaaS")
 	// Client-identifying headers. Tencent's billing/usage backend uses these to

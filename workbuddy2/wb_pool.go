@@ -41,33 +41,18 @@ func poolInstance() *wpool.Pool {
 	return wbPool
 }
 
-// syncPoolFromHost refreshes pool entries from the host auth list and feeds the
-// credit snapshot used by the weighted pick. Called from the scheduler hook and
-// from credit queries — both already run on panel traffic.
-func syncPoolFromHost() {
-	files, err := panelHostAuthList()
-	if err != nil {
-		return
-	}
+// ensurePoolCandidates keeps the pool keyed by the host-provided candidate IDs.
+// The scheduler request already is the authoritative active-candidate snapshot,
+// so a second host.auth.list plus one host.auth.get per account is unnecessary.
+func ensurePoolCandidates(candidates []string) {
 	p := poolInstance()
-	auths := make([]*wauth.Auth, 0, len(files))
-	for _, f := range files {
-		if f.Disabled {
+	for _, id := range candidates {
+		if id == "" {
 			continue
 		}
-		sa, _, err := hostAuthGetBundle(f.AuthIndex)
-		if err != nil {
-			continue
-		}
-		auths = append(auths, wbAuth(nil, sa))
-	}
-	p.SyncToDir(auths)
-	// Credits: the cached snapshot is refreshed by the panel/credits path; here
-	// we only push what is already known so the weighted pick sees fresh numbers
-	// without adding upstream calls.
-	for _, f := range files {
-		if remain, exhausted := cachedCreditsScore(f.ID); remain >= 0 && !exhausted {
-			p.SetCredits(f.ID, remain)
+		p.Add(&wauth.Auth{UID: id})
+		if remain, exhausted := cachedCreditsScore(id); remain >= 0 && !exhausted {
+			p.SetCredits(id, remain)
 		}
 	}
 }

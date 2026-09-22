@@ -132,7 +132,8 @@ func handleAccountToggle(req pluginapi.ManagementRequest) (int, any) {
 	// Membership check before the write: host.auth.get resolves any provider's
 	// index, and the write path rebuilds the file in workbuddy shape — an
 	// unvalidated index would clobber another provider's credential.
-	if _, err := requireWorkbuddyAuthIndex(idx); err != nil {
+	entry, err := requireWorkbuddyAuthIndex(idx)
+	if err != nil {
 		return http.StatusNotFound, map[string]any{"error": "account not found"}
 	}
 	sa, _, err := hostAuthGetBundle(idx)
@@ -145,7 +146,8 @@ func handleAccountToggle(req pluginapi.ManagementRequest) (int, any) {
 	if *body.Disabled {
 		note = appendNote(note, "手动停用")
 	}
-	if err := writeAuthDisabled(idx, sa, *body.Disabled, note); err != nil {
+	authID := authStateKey(entry)
+	if err := writeAuthDisabled(idx, authID, sa, *body.Disabled, note); err != nil {
 		return http.StatusBadGateway, map[string]any{"error": sanitizeUpstreamError(err)}
 	}
 	action := "enabled"
@@ -160,9 +162,16 @@ func handleAccountToggle(req pluginapi.ManagementRequest) (int, any) {
 	}
 }
 
+func authStateKey(entry pluginapi.HostAuthFileEntry) string {
+	if strings.TrimSpace(entry.ID) != "" {
+		return entry.ID
+	}
+	return entry.AuthIndex
+}
+
 // writeAuthDisabled persists the disabled flag plus note for one account,
 // reusing the lifecycle's file pipeline (extra fields preserved).
-func writeAuthDisabled(authIndex string, sa *storedAuth, disabled bool, note string) error {
+func writeAuthDisabled(authIndex, authID string, sa *storedAuth, disabled bool, note string) error {
 	mu := checkinLockFor(authIndex)
 	mu.Lock()
 	defer mu.Unlock()
@@ -174,14 +183,18 @@ func writeAuthDisabled(authIndex string, sa *storedAuth, disabled bool, note str
 	if err == nil && phys != nil {
 		name, path, legacyPath = resolveAuthFileTarget(sa, phys)
 	}
-	raw, err := buildAuthFileJSON(sa, disabled, note, nil)
+	physicalJSON := []byte(nil)
+	if phys != nil {
+		physicalJSON = phys.JSON
+	}
+	raw, err := buildAuthFileJSONPreserving(physicalJSON, sa, disabled, note, nil)
 	if err != nil {
 		return err
 	}
 	if err := hostAuthPersistMigrate(name, path, legacyPath, raw); err != nil {
 		return err
 	}
-	rememberLifecycleState(authIndex, disabled, note)
-	accountCache.Delete(authIndex)
+	rememberLifecycleState(authID, disabled, note)
+	accountCache.Delete(authID)
 	return nil
 }

@@ -83,6 +83,11 @@ func TestCheckinRecordsCreditInTaskLog(t *testing.T) {
 	if !strings.Contains(src, `jsonI64(out, "credit", "daily_credit")`) {
 		t.Fatal("check-in credit must come from the structured response fields")
 	}
+	start := strings.Index(src, "func processAutoCheckinAccount")
+	end := strings.Index(src, "\n// handleManualCheckin serves POST /checkin.")
+	if start < 0 || end <= start || !strings.Contains(src[start:end], "recordCheckinTaskResult") {
+		t.Fatal("scheduled check-in must record its task result")
+	}
 }
 
 // TestCreditGrantingTasksRecordAmounts: every task that grants credits must
@@ -127,6 +132,7 @@ func TestPanelRendersCheckinAndTaskCredit(t *testing.T) {
 		want string
 	}{
 		{"checkin merged on lazy load", `if(acct&&acct.checkin) a.checkin=acct.checkin;`},
+		{"checkin merged on manual refresh", `if(acct.checkin) a.checkin=acct.checkin;`},
 		{"checkin card row", `function checkinHTML(a)`},
 		{"checkin row rendered", `${checkinHTML(a)}`},
 		{"streak shown", `连续 `},

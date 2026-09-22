@@ -161,6 +161,39 @@ func TestBuildAuthFileJSON_ContainsDisabledAndNote(t *testing.T) {
 	}
 }
 
+func TestBuildAuthFileJSONPreservesPhysicalMetadata(t *testing.T) {
+	physical := []byte(`{"type":"workbuddy","device_token":"fixture-device-token","large_number":9223372036854775807,"custom":{"keep":true},"disabled":false}`)
+	sa := &storedAuth{
+		Auth:    storedTokens{AccessToken: "at", RefreshToken: "rt"},
+		Account: storedAccount{UID: "u1"},
+	}
+	raw, err := buildAuthFileJSONPreserving(physical, sa, true, "disabled", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	var deviceToken string
+	if err := json.Unmarshal(got["device_token"], &deviceToken); err != nil || deviceToken != "fixture-device-token" {
+		t.Fatalf("device_token was not preserved: %s", got["device_token"])
+	}
+	if string(got["large_number"]) != "9223372036854775807" {
+		t.Fatalf("large_number was not preserved exactly: %s", got["large_number"])
+	}
+	if _, ok := got["custom"]; !ok {
+		t.Fatal("unrelated top-level metadata was dropped")
+	}
+	var disabled bool
+	var note string
+	_ = json.Unmarshal(got["disabled"], &disabled)
+	_ = json.Unmarshal(got["note"], &note)
+	if !disabled || note != "disabled" {
+		t.Fatalf("plugin metadata not updated: %v", got)
+	}
+}
+
 func TestSafeWorkbuddyAuthPath(t *testing.T) {
 	dir := t.TempDir()
 	ok := filepath.Join(dir, "workbuddy-abc.json")

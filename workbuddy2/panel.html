@@ -1085,6 +1085,7 @@ async function refreshCredits(idx, btn){
       if(acct.exhausted!=null) a.exhausted=acct.exhausted;
       if(acct.trial_claimed!=null) a.trial_claimed=acct.trial_claimed;
       if(acct.plan) a.plan=acct.plan;
+      if(acct.checkin) a.checkin=acct.checkin;
       if(acct.error) a.error=acct.error; else a.error="";
       updateOneCard(a);
     }

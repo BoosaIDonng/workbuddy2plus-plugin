@@ -173,7 +173,9 @@ func processAutoCheckinAccount(f pluginapi.HostAuthFileEntry, doCheckin bool) {
 			// CN: daily check-in when enabled.
 			ci, err := fetchCheckinStatus(sa)
 			if err == nil && ci != nil && ci.Active && !ci.TodayCheckedIn {
-				if _, callErr := performCheckinCall(sa); callErr == nil {
+				checkinResult, callErr := performCheckinCall(sa)
+				recordCheckinTaskResult(sa.Account.Nickname, checkinResult, callErr)
+				if callErr == nil {
 					// Refresh once after a successful checkin call so cache reflects
 					// the post-call state. If the status call fails keep the pre-call
 					// snapshot rather than dropping it (v0.6.31: avoid shadowing ci
@@ -220,6 +222,20 @@ func processAutoCheckinAccount(f pluginapi.HostAuthFileEntry, doCheckin bool) {
 	if lifecycleEnabled() {
 		_, _ = reconcileOneAccount(f.AuthIndex, f.ID, true)
 	}
+}
+
+func recordCheckinTaskResult(account string, result map[string]any, callErr error) {
+	if callErr != nil {
+		recordTaskCredit("checkin", account, false, 0, callErr.Error())
+		return
+	}
+	if result == nil {
+		recordTaskCredit("checkin", account, false, 0, "empty check-in response")
+		return
+	}
+	message, _ := result["message"].(string)
+	recordTaskCredit("checkin", account, result["success"] == true,
+		jsonI64(result, "credit", "daily_credit"), message)
 }
 
 // handleManualCheckin serves POST /checkin.
@@ -312,11 +328,7 @@ func handleManualCheckinWithCallback(req pluginapi.ManagementRequest, callbackID
 			continue
 		}
 		nick, _ := out["nickname"].(string)
-		msg, _ := out["message"].(string)
-		// The grant is structured, not part of the message: the same fields the
-		// panel's success toast already reads (credit, then daily_credit).
-		credit := jsonI64(out, "credit", "daily_credit")
-		recordTaskCredit("checkin", nick, out["success"] == true, credit, msg)
+		recordCheckinTaskResult(nick, out, nil)
 	}
 	return map[string]any{
 		"results": results,

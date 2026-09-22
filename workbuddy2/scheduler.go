@@ -92,10 +92,9 @@ func handleSchedulerPick(raw []byte) ([]byte, error) {
 	for _, c := range wbCandidates {
 		ids = append(ids, c.ID)
 	}
-	// Refresh pool entries from the host list, then pick by three-factor weight
-	// (credits ratio ×10 + credit-expiry preference + idle compensation), with
-	// per-model 6004 exemptions applied inside the pool.
-	syncPoolFromHost()
+	// Candidate IDs already come from the host scheduler. Ensure the pool has
+	// entries without re-reading the full auth store on every chat request.
+	ensurePoolCandidates(ids)
 	picked := pickFromPool(ids, req.Model)
 	if picked == "" {
 		// Pool has nothing healthy: fall back to the panel-selected account so a

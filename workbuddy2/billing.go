@@ -86,6 +86,9 @@ func billingHeaders(req *http.Request, sa *storedAuth) {
 	if sa.Auth.Domain != "" {
 		req.Header.Set("X-Domain", sa.Auth.Domain)
 	}
+	if sa.DeviceToken != "" {
+		req.Header.Set("X-Device-Token", sa.DeviceToken)
+	}
 }
 
 func billingCall(sa *storedAuth, path string, body any) (json.RawMessage, error) {

@@ -150,7 +150,7 @@ func hostAuthPersistMigrate(name, path, legacyPath string, raw []byte) error {
 	return nil
 }
 
-// buildAuthFileJSON produces host-save payload: nested storage + top-level metadata.
+// buildAuthFileJSON produces a new host-save payload.
 // extra merges additional top-level keys (optional).
 
 func hostAuthSaveJSON(name string, raw []byte) error {
@@ -181,28 +181,48 @@ func hostAuthSaveJSON(name string, raw []byte) error {
 // lifecycleStateUnchanged avoids redundant saves when note/disabled unchanged.
 
 func buildAuthFileJSON(sa *storedAuth, disabled bool, note string, extra map[string]any) ([]byte, error) {
+	return buildAuthFileJSONPreserving(nil, sa, disabled, note, extra)
+}
+
+// buildAuthFileJSONPreserving updates plugin-owned fields while retaining
+// unrelated top-level fields from the physical auth file. Those fields include
+// device_token and may be required by upstream risk-control headers.
+func buildAuthFileJSONPreserving(physical []byte, sa *storedAuth, disabled bool, note string, extra map[string]any) ([]byte, error) {
 	if sa == nil {
 		return nil, fmt.Errorf("nil storedAuth")
 	}
-	storage, err := json.Marshal(sa)
-	if err != nil {
+	out := make(map[string]json.RawMessage)
+	if len(strings.TrimSpace(string(physical))) > 0 {
+		if err := json.Unmarshal(physical, &out); err != nil {
+			return nil, err
+		}
+	}
+	if out == nil {
+		out = make(map[string]json.RawMessage)
+	}
+	if err := mergeStoredAuthFieldsRaw(out, sa); err != nil {
 		return nil, err
 	}
-	var nested map[string]any
-	if err := json.Unmarshal(storage, &nested); err != nil {
-		return nil, err
-	}
-	out := map[string]any{
+	metadata := map[string]any{
 		"type":     providerName,
 		"provider": providerName,
 		"logo":     pluginLogoURL,
 		"disabled": disabled,
 		"note":     note,
-		"auth":     nested["auth"],
-		"account":  nested["account"],
+	}
+	for k, v := range metadata {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		out[k] = json.RawMessage(raw)
 	}
 	for k, v := range extra {
-		out[k] = v
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		out[k] = json.RawMessage(raw)
 	}
 	return json.Marshal(out)
 }
@@ -215,17 +235,34 @@ func buildRefreshedAuthJSON(physical []byte, sa *storedAuth) ([]byte, error) {
 	if err := json.Unmarshal(physical, &doc); err != nil {
 		return nil, err
 	}
+	if err := mergeStoredAuthFieldsRaw(doc, sa); err != nil {
+		return nil, err
+	}
+	return json.Marshal(doc)
+}
+
+func mergeStoredAuthFieldsRaw(doc map[string]json.RawMessage, sa *storedAuth) error {
+	if sa == nil {
+		return fmt.Errorf("nil storedAuth")
+	}
 	storage, err := json.Marshal(sa)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var nested map[string]json.RawMessage
 	if err := json.Unmarshal(storage, &nested); err != nil {
-		return nil, err
+		return err
 	}
 	doc["auth"] = nested["auth"]
 	doc["account"] = nested["account"]
-	return json.Marshal(doc)
+	if sa.DeviceToken != "" {
+		token, err := json.Marshal(sa.DeviceToken)
+		if err != nil {
+			return err
+		}
+		doc["device_token"] = json.RawMessage(token)
+	}
+	return nil
 }
 
 // parseDisabledFromAuthJSON reads top-level disabled from physical auth JSON.

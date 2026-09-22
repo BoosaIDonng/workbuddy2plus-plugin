@@ -37,7 +37,7 @@ release: clean
 	  mkdir -p $$out; \
 	  GOOS=$$os GOARCH=$$arch CGO_ENABLED=1 $(GO) build -buildmode=c-shared -ldflags "$(LDFLAGS)" -o $$out/workbuddy.so .; \
 	  test -f $$out/workbuddy.so; \
-	  cp README.md README_CN.md LICENSE $$out/; \
+	  cp ../README.md LICENSE $$out/; \
 	  cd dist && zip -qr workbuddy_$(VERSION)_$${os}_$${arch}.zip workbuddy_$(VERSION)_$${os}_$${arch} && cd ..; \
 	  echo "built $$out"; \
 	done

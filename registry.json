@@ -6,7 +6,7 @@
       "name": "WorkBuddy",
       "description": "Tencent CodeBuddy (WorkBuddy) OAuth provider for CLIProxyAPI. Second-development fork of Sliverkiss/cpa-plugin: multi-account OAuth, dynamic model discovery, streaming executor with per-frame SSE normalization, three-factor weighted account pool, daily automation (check-in, token keepalive, activity map, cat travel), credit lifecycle, and a seven-tab management panel.",
       "author": "Sliverkiss (fork maintained by BoosaIDonng)",
-      "version": "2.8.0",
+      "version": "2.8.1",
       "repository": "https://github.com/BoosaIDonng/workbuddy2plus-plugin",
       "logo": "https://raw.githubusercontent.com/DGZSbot/ai-icon/refs/heads/main/WorkBuddy.png",
       "homepage": "https://github.com/BoosaIDonng/workbuddy2plus-plugin",

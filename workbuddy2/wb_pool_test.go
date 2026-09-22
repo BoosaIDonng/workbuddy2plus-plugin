@@ -88,6 +88,23 @@ func resetPoolForTest(t *testing.T) {
 	wbPoolOnce = sync.Once{}
 }
 
+func TestEnsurePoolCandidatesAvoidsHostAuthRefresh(t *testing.T) {
+	resetPoolForTest(t)
+	accountCache.Store("uid-candidate", &accountCacheEntry{
+		credits: &creditsSummary{TotalRemain: 42},
+	})
+	t.Cleanup(func() { accountCache.Delete("uid-candidate") })
+
+	ensurePoolCandidates([]string{"uid-candidate"})
+	statuses := poolInstance().List()
+	if len(statuses) != 1 || statuses[0].UID != "uid-candidate" {
+		t.Fatalf("pool candidates = %+v", statuses)
+	}
+	if statuses[0].Credits != 42 {
+		t.Fatalf("cached credits = %d want 42", statuses[0].Credits)
+	}
+}
+
 // TestExpiringCreditsBuckets: only packages ending inside the window count.
 func TestExpiringCreditsBuckets(t *testing.T) {
 	soon := time.Now().Add(2 * 24 * time.Hour).Format("2006-01-02 15:04:05")

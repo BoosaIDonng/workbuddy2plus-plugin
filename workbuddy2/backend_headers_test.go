@@ -52,3 +52,27 @@ func TestBackendHeadersAddsClientIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestBackendAndBillingHeadersCarryDeviceToken(t *testing.T) {
+	sa := &storedAuth{DeviceToken: "fixture-device-token"}
+	for name, add := range map[string]func(*http.Request){
+		"backend": func(req *http.Request) { backendHeaders(req, sa) },
+		"billing": func(req *http.Request) { billingHeaders(req, sa) },
+	} {
+		req := httptest.NewRequest("POST", "https://example.com", nil)
+		add(req)
+		if got := req.Header.Get("X-Device-Token"); got != "fixture-device-token" {
+			t.Errorf("%s X-Device-Token = %q", name, got)
+		}
+	}
+}
+
+func TestParseStoredFlatAuthCarriesDeviceToken(t *testing.T) {
+	sa, err := parseStored([]byte(`{"accessToken":"at","refreshToken":"rt","uid":"u1","device_token":"device-token"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sa.DeviceToken != "device-token" {
+		t.Fatalf("DeviceToken = %q", sa.DeviceToken)
+	}
+}
