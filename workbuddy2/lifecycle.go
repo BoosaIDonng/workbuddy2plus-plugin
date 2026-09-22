@@ -482,8 +482,14 @@ func reconcileByUID(uid string, status int, body string) {
 // invalidateAccountCredits drops cached credits so the next panel/reconcile
 // fetch hits upstream. Call after a successful chat completion — otherwise a
 // short TTL cache makes "used" look frozen while the user is burning credits.
+//
+// This runs on the executor's success path, i.e. after every chat completion,
+// so it must not call the host: the previous implementation did one
+// host.auth.list plus up to N serial host.auth.get calls before the stream was
+// allowed to close, adding seconds of tail latency to a request that had
+// already finished. The cache entry carries the account uid, so the match is a
+// map scan in memory.
 func invalidateAccountCredits(authID, authUID string) {
-	// Invalidate credits only — keep plan/checkin in cache.
 	invalidateCredits := func(id string) {
 		if v, ok := accountCache.Load(id); ok {
 			if e, ok2 := v.(*accountCacheEntry); ok2 {
@@ -500,39 +506,18 @@ func invalidateAccountCredits(authID, authUID string) {
 	if authUID == "" || authUID == authID {
 		return
 	}
-	// Also drop any cache keyed by auth_index that maps to this UID.
-	files, err := hostAuthList()
-	if err != nil {
-		return
-	}
-	wantName := "workbuddy-" + authUID + ".json"
-	matchedByName := false
-	for _, f := range files {
-		if f.AuthIndex == authID || f.ID == authID || f.Name == authID {
-			invalidateCredits(f.ID)
-			continue
+	// Drop every cache key whose entry belongs to the same upstream account —
+	// the dashboard keys by auth.ID while the executor knows the uid.
+	accountCache.Range(func(key, value any) bool {
+		e, ok := value.(*accountCacheEntry)
+		if !ok || e.uid != authUID {
+			return true
 		}
-		if listEntryMatchesUID(f, authUID, wantName) {
-			invalidateCredits(f.ID)
-			matchedByName = true
+		if id, ok2 := key.(string); ok2 && id != authID {
+			invalidateCredits(id)
 		}
-	}
-	if matchedByName {
-		return
-	}
-	// Slow path: legacy names without uid in list metadata.
-	for _, f := range files {
-		if f.AuthIndex == authID {
-			continue
-		}
-		sa, err := hostAuthGet(f.AuthIndex)
-		if err != nil {
-			continue
-		}
-		if strings.TrimSpace(sa.Account.UID) == authUID {
-			invalidateCredits(f.ID)
-		}
-	}
+		return true
+	})
 }
 
 // listEntryMatchesUID reports whether host list metadata already encodes the UID

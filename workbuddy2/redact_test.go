@@ -27,6 +27,29 @@ func TestRedactSecrets_TokenKV(t *testing.T) {
 	}
 }
 
+// TestRedactSecrets_CamelCaseTokenKV is the regression test for the gap that let
+// credentials reach logs and the persisted panel rows: this plugin's own wire
+// format is camelCase (accessToken), but only snake_case keys were matched.
+func TestRedactSecrets_CamelCaseTokenKV(t *testing.T) {
+	const secret = "opaqueNonJwtTokenValue0123456789"
+	cases := []string{
+		`{"accessToken":"` + secret + `"}`,
+		`{"refreshToken":"` + secret + `"}`,
+		`{"deviceToken":"` + secret + `"}`,
+		`{"access_token":"` + secret + `"}`,
+		`{"access-token":"` + secret + `"}`,
+		`accessToken=` + secret,
+		`{"apiKey":"` + secret + `"}`,
+		`{"clientSecret":"` + secret + `"}`,
+	}
+	for _, in := range cases {
+		got := redactSecrets(in)
+		if contains(got, secret) {
+			t.Errorf("credential survived redaction: in=%s out=%s", in, got)
+		}
+	}
+}
+
 func TestTruncateRedacted(t *testing.T) {
 	// Long body with bearer must redact before truncation (A-37).
 	tok := "Bearer " + "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0." + "sigsigsigsig"

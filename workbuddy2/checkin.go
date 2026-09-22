@@ -99,10 +99,10 @@ func schedulerLoop(stop chan struct{}) {
 				launch(func() { runTokenKeepalive() })
 			}
 			if runActivity {
-				launch(runActivityTask)
+				launch(func() { runActivityTask() })
 			}
 			if runTravel {
-				launch(runTravelTask)
+				launch(func() { runTravelTask() })
 			}
 			wg.Wait()
 		}
@@ -206,6 +206,7 @@ func processAutoCheckinAccount(f pluginapi.HostAuthFileEntry, doCheckin bool) {
 				if prev != nil {
 					entry.credits = prev.credits
 					entry.plan = prev.plan
+					entry.uid = prev.uid
 				}
 				accountCache.Store(f.ID, entry)
 			}
@@ -418,6 +419,7 @@ func mergeCheckinCache(authID string, ci *checkinSummary) {
 	if prev != nil {
 		entry.credits = prev.credits
 		entry.plan = prev.plan
+		entry.uid = prev.uid
 	}
 	accountCache.Store(authID, entry)
 }

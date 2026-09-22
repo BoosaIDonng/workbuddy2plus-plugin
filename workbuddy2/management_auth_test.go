@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -30,10 +31,15 @@ func TestManagementKeyProtectsReadOnlyStatusRoutes(t *testing.T) {
 	oldKey := managementAPIKey
 	managementAPIKey = "secret"
 	managementAPIKeyMu.Unlock()
+	// This test sends unauthenticated requests, which consume rate-limit tokens
+	// from the process-global bucket. Reset it so a repeated run (-count=N) does
+	// not inherit the previous run's exhausted bucket and see 429 instead of 401.
+	resetMgmtRateLimitForTest()
 	t.Cleanup(func() {
 		managementAPIKeyMu.Lock()
 		managementAPIKey = oldKey
 		managementAPIKeyMu.Unlock()
+		resetMgmtRateLimitForTest()
 	})
 
 	base := loadedManagementBasePath() + "/plugins/" + providerName
@@ -142,5 +148,44 @@ func TestManagementRateLimitChargesFailedKey(t *testing.T) {
 		if resp.StatusCode != want {
 			t.Fatalf("request %d status=%d, want %d", i+1, resp.StatusCode, want)
 		}
+	}
+}
+
+// TestRateLimitCannotBeBypassedByRotatingForwardedFor locks down the bypass the
+// global bucket exists to close: the per-IP key comes from a client-supplied
+// header, so an attacker rotating X-Forwarded-For must still be throttled.
+func TestRateLimitCannotBeBypassedByRotatingForwardedFor(t *testing.T) {
+	managementAPIKeyMu.Lock()
+	oldKey := managementAPIKey
+	managementAPIKey = "secret"
+	managementAPIKeyMu.Unlock()
+	resetMgmtRateLimitForTest()
+	t.Cleanup(func() {
+		managementAPIKeyMu.Lock()
+		managementAPIKey = oldKey
+		managementAPIKeyMu.Unlock()
+		resetMgmtRateLimitForTest()
+	})
+
+	base := loadedManagementBasePath() + "/plugins/" + providerName + "/not-found"
+	throttled := false
+	for i := 0; i < mgmtRateLimitCapacity*3; i++ {
+		resp := managementResponseForTest(t, pluginapi.ManagementRequest{
+			Method: http.MethodPost,
+			Path:   base,
+			Headers: http.Header{
+				"Authorization": []string{"Bearer wrong"},
+				// A distinct spoofed client IP on every attempt.
+				"X-Forwarded-For": []string{fmt.Sprintf("203.0.113.%d", i)},
+			},
+		})
+		if resp.StatusCode == http.StatusTooManyRequests {
+			throttled = true
+			break
+		}
+	}
+	if !throttled {
+		t.Fatalf("rotating X-Forwarded-For bypassed the rate limit entirely; %d attempts all got a fresh burst",
+			mgmtRateLimitCapacity*3)
 	}
 }

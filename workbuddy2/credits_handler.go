@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
@@ -261,12 +262,13 @@ func handleCreditsQueryWithCallback(req pluginapi.ManagementRequest, callbackID 
 				// Credit ledger: compare this real query against the previous
 				// snapshot and record any increase (covers check-in, activity
 				// and travel channels — upstream only logs travel rewards).
+				// A missing previous snapshot (first query after a restart) is
+				// skipped: with before=0 the whole balance would be recorded as
+				// an acquisition, producing a phantom "+<entire balance>" row.
 				if cr != nil {
-					before := int64(0)
 					if prev != nil && prev.credits != nil {
-						before = prev.credits.TotalRemain
+						recordLedger(sa.Account.UID, sa.Account.Nickname, prev.credits.TotalRemain, cr.TotalRemain, "credits-query")
 					}
-					recordLedger(sa.Account.UID, sa.Account.Nickname, before, cr.TotalRemain, "credits-query")
 					// Feed the pool so the weighted pick prefers spending credits
 					// that expire soonest. Derived locally from the package cycle
 					// windows — no extra upstream call.
@@ -274,6 +276,7 @@ func handleCreditsQueryWithCallback(req pluginapi.ManagementRequest, callbackID 
 				}
 				accountCache.Store(f.ID, &accountCacheEntry{
 					checkin: ci, credits: cr, plan: plan, fetched: now,
+					uid: strings.TrimSpace(sa.Account.UID),
 				})
 			}
 			return map[string]any{"accounts": []map[string]any{acct}}
@@ -289,20 +292,36 @@ func handleCreditsQueryWithCallback(req pluginapi.ManagementRequest, callbackID 
 		Error     string          `json:"error,omitempty"`
 	}
 	var out []acctCredits
-	for _, f := range files {
-		sa, err := hostAuthGet(f.AuthIndex)
-		if err != nil {
-			out = append(out, acctCredits{AuthIndex: f.AuthIndex, Error: "load auth: " + err.Error()})
-			continue
-		}
-		cr, err := fetchUserResourceWithCallback(sa, callbackID)
-		ac := acctCredits{AuthIndex: f.AuthIndex, Nickname: sa.Account.Nickname, UID: sa.Account.UID}
-		if err != nil {
-			ac.Error = err.Error()
-		} else {
-			ac.Credits = cr
-		}
-		out = append(out, ac)
+	// Accounts are independent, so fetch them concurrently — a serial loop costs
+	// one billing round-trip per account (plus the retry backoff on a flaky one),
+	// which pushes a 20-account refresh past the host's management timeout. The
+	// semaphore matches the concurrency used by handleUsageQuery and
+	// buildDashboardEx so the upstream sees the same request shape.
+	results := make([]acctCredits, len(files))
+	sem := make(chan struct{}, 3)
+	var wg sync.WaitGroup
+	for i, f := range files {
+		wg.Add(1)
+		go func(i int, f pluginapi.HostAuthFileEntry) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			sa, err := hostAuthGet(f.AuthIndex)
+			if err != nil {
+				results[i] = acctCredits{AuthIndex: f.AuthIndex, Error: "load auth: " + err.Error()}
+				return
+			}
+			ac := acctCredits{AuthIndex: f.AuthIndex, Nickname: sa.Account.Nickname, UID: sa.Account.UID}
+			cr, err := fetchUserResourceWithCallback(sa, callbackID)
+			if err != nil {
+				ac.Error = err.Error()
+			} else {
+				ac.Credits = cr
+			}
+			results[i] = ac
+		}(i, f)
 	}
+	wg.Wait()
+	out = results
 	return map[string]any{"accounts": out}
 }

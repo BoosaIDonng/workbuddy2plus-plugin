@@ -13,6 +13,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	wauth "github.com/sliverkiss/workbuddy2plus-plugin/internal/auth"
@@ -31,22 +32,64 @@ const (
 
 // growthRewardClaimed tracks per-account, per-CST-day reward claims so a
 // restart or a second trigger cannot replay the claim chain.
+//
+// The slot is *reserved* before the chain runs, not stamped after it: the chain
+// spans several seconds of upstream calls, so a check-then-act pair let two
+// concurrent triggers (the 10:00 scheduler tick plus a panel POST, or two panel
+// POSTs) both pass the guard and both execute GrowthRedeem — a real credit
+// grant whose idempotency key the client deliberately regenerates per call.
 var (
 	growthClaimedMu sync.Mutex
 	growthClaimed   = map[string]string{} // uid -> CST date
 )
 
-func growthClaimedToday(uid string) bool {
+// claimGrowthSlot atomically reserves today's claim for uid. It returns false
+// when today's chain has already run or is running. The CST date is read once
+// here so the reservation cannot straddle a day boundary (a chain started at
+// 23:59:5x would otherwise stamp the *next* day and suppress it entirely).
+func claimGrowthSlot(uid string) (string, bool) {
+	today := cstDate(time.Now())
 	growthClaimedMu.Lock()
 	defer growthClaimedMu.Unlock()
-	return growthClaimed[uid] == cstDate(time.Now())
+	if growthClaimed[uid] == today {
+		return today, false
+	}
+	growthClaimed[uid] = today
+	return today, true
 }
 
-func markGrowthClaimed(uid string) {
+// releaseGrowthSlot returns an unused reservation so a later run can retry. Use
+// only when the chain aborted before any non-idempotent step (a reward-state
+// read failure), never after a redeem was attempted.
+func releaseGrowthSlot(uid string) {
 	growthClaimedMu.Lock()
 	defer growthClaimedMu.Unlock()
-	growthClaimed[uid] = cstDate(time.Now())
+	delete(growthClaimed, uid)
 }
+
+// pruneGrowthClaimed drops entries that are not from the current CST day. Called
+// from the dashboard prune path; without it the map keeps one entry per uid ever
+// seen, and a re-imported account whose uid is reused would have a same-day
+// claim silently skipped.
+func pruneGrowthClaimed() {
+	today := cstDate(time.Now())
+	growthClaimedMu.Lock()
+	defer growthClaimedMu.Unlock()
+	for uid, day := range growthClaimed {
+		if day != today {
+			delete(growthClaimed, uid)
+		}
+	}
+}
+
+// activityRunning guards the activity sweep against concurrent runs: the sweep
+// takes minutes (5 upstream writes per account with deliberate gaps), so a
+// double-click or a panel POST landing on the 10:00 tick would otherwise send
+// the whole report storm twice and race the claim chain.
+var activityRunning atomic.Bool
+
+// travelRunning is the equivalent guard for the travel sweep.
+var travelRunning atomic.Bool
 
 // cstDate renders the upstream natural day (CST) — growth rewards reset on this
 // boundary, not on the container's local midnight.
@@ -55,11 +98,18 @@ func cstDate(t time.Time) string {
 }
 
 // runActivityTask reports chat activity for every usable CN account, then runs
-// the reward chain. Per-account failures never abort the sweep.
-func runActivityTask() {
+// the reward chain. Per-account failures never abort the sweep. Returns false
+// when another sweep is already in flight.
+func runActivityTask() bool {
+	if !activityRunning.CompareAndSwap(false, true) {
+		log.Printf("activity: skipped (a sweep is already running)")
+		return false
+	}
+	defer activityRunning.Store(false)
+
 	accounts := cnAccounts()
 	if len(accounts) == 0 {
-		return
+		return true
 	}
 	log.Printf("activity: start for %d account(s)", len(accounts))
 	for i, acct := range accounts {
@@ -69,6 +119,11 @@ func runActivityTask() {
 		reportActivityFor(acct)
 	}
 	log.Printf("activity: done")
+	// The conversation count is now topped up, so a buddy adoption that was
+	// rejected earlier today for "threshold not met" deserves a retry — this is
+	// what lets the 21:00 travel run succeed instead of waiting a full day.
+	adoptGeneration.Add(1)
+	return true
 }
 
 // reportActivityFor sends the N reports for one account and, on full success,
@@ -124,7 +179,10 @@ func claimGrowthRewards(acct *wauth.Auth) {
 	if acct == nil || acct.IsGlobal() {
 		return // growth chain is CN-only (Global streak endpoint returns 500)
 	}
-	if growthClaimedToday(acct.UID) {
+	// Reserve the day up front: the chain below makes real credit grants, and
+	// the reservation is the only thing preventing a concurrent trigger from
+	// replaying them.
+	if _, ok := claimGrowthSlot(acct.UID); !ok {
 		return
 	}
 	// Gift / compensation packs first: their credits do not depend on the
@@ -133,6 +191,9 @@ func claimGrowthRewards(acct *wauth.Auth) {
 
 	state, err := wbClient.GrowthRewardState(acct)
 	if err != nil {
+		// Nothing non-idempotent ran yet, so give the day back: a transient read
+		// failure should not cost the account its claims until tomorrow.
+		releaseGrowthSlot(acct.UID)
 		log.Printf("WARN: activity %s: reward-state: %v", accountLabel(acct), err)
 		return
 	}
@@ -148,7 +209,6 @@ func claimGrowthRewards(acct *wauth.Auth) {
 	if tier == "" {
 		// No newly reached tier — normal state for most days.
 		claimGrowthLottery(acct)
-		markGrowthClaimed(acct.UID)
 		return
 	}
 	res, err := wbClient.GrowthRedeem(acct, tier, "")
@@ -161,11 +221,12 @@ func claimGrowthRewards(acct *wauth.Auth) {
 	case wupstream.IsRedeemAlreadyClaimed(err) || wupstream.IsRedeemNotEnoughDays(err):
 		log.Printf("activity %s: redeem tier=%s skip (already claimed or days not enough)", accountLabel(acct), tier)
 	default:
+		// The outcome is unknown (a transport error may still have committed
+		// upstream), so the reservation stays: retrying could double-grant.
 		log.Printf("WARN: activity %s: redeem tier=%s: %v", accountLabel(acct), tier, err)
 		recordTask("growth-redeem", acct.Nickname, false, err.Error())
 	}
 	claimGrowthLottery(acct)
-	markGrowthClaimed(acct.UID)
 }
 
 // growthEligibleTier returns the highest tier the account has reached but not

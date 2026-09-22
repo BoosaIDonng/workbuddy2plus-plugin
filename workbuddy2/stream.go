@@ -144,8 +144,9 @@ func pumpUpstreamStream(httpReq *http.Request, cancel context.CancelFunc, stream
 		// is the client-visible first token. Role-only and usage-only frames
 		// are skipped so the measurement reflects upstream generation start.
 		// Keyed on authUID — the same identifier publishUsage passes as authID.
+		// Both models are passed so the key matches recordRequest's alias fallback.
 		if !firstTokenMarked && hasAssistantText(content) {
-			noteFirstToken(authUID, upstreamModel, started)
+			noteFirstToken(authUID, upstreamModel, requestedModel, started)
 			firstTokenMarked = true
 		}
 		if sseFramed {

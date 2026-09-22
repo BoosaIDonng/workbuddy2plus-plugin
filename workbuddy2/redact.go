@@ -7,9 +7,15 @@ package main
 import "regexp"
 
 var (
-	redactREBearer  = regexp.MustCompile(`(?i)Bearer\s+[A-Za-z0-9._\-+/=]{12,}`)
-	redactREJWT     = regexp.MustCompile(`\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b`)
-	redactRETokenKV = regexp.MustCompile(`(?i)((?:access_token|refresh_token|id_token)\s*[=:]\s*)([A-Za-z0-9._\-+/=]{12,})`)
+	redactREBearer = regexp.MustCompile(`(?i)Bearer\s+[A-Za-z0-9._\-+/=]{12,}`)
+	redactREJWT    = regexp.MustCompile(`\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b`)
+	// Token key/value pairs. The key alternation covers snake_case, camelCase and
+	// kebab-case (access_token / accessToken / access-token): this plugin's own
+	// credential wire format is camelCase, so matching only snake_case left an
+	// upstream body that echoes the request credential fully exposed.
+	// Quotes on both sides of the separator are optional so all three shapes
+	// match: `accessToken=…`, `"accessToken":"…"` and `"accessToken": "…"`.
+	redactRETokenKV = regexp.MustCompile(`(?i)("?(?:access[_-]?token|refresh[_-]?token|id[_-]?token|device[_-]?token|session[_-]?token|api[_-]?key|client[_-]?secret|authorization)"?\s*[=:]\s*"?)([A-Za-z0-9._\-+/=]{12,})`)
 	// redactREJWTLoose catches JWTs that appear bare in a JSON value or path —
 	// no Bearer prefix, no access_token key. Two-segment and three-segment both
 	// match (some upstreams return header.payload only when signature is empty).

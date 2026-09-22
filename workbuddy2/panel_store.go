@@ -10,6 +10,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -73,19 +74,32 @@ func (s *panelStore) loadLocked(stream panelStream) {
 	if s.loaded[stream] || s.dir == "" {
 		return
 	}
-	s.loaded[stream] = true
 	raw, err := os.ReadFile(s.path(stream))
 	if err != nil {
+		if os.IsNotExist(err) {
+			// Nothing on disk yet — safe to start from empty and never re-read.
+			s.loaded[stream] = true
+			return
+		}
+		// A transient read error must not mark the stream loaded: the next flush
+		// would then write only the in-memory rows over a readable file, silently
+		// destroying the history it failed to read. Leave it unloaded so the read
+		// is retried on the next append.
+		log.Printf("WARN: panel store: read %s: %v", stream, err)
 		return
 	}
 	var rows []json.RawMessage
-	if json.Unmarshal(raw, &rows) != nil {
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		// Corrupt file: keep it for inspection rather than overwriting it with
+		// the next flush, and skip loading so the failure stays visible.
+		log.Printf("WARN: panel store: parse %s: %v (leaving file untouched)", stream, err)
 		return
 	}
 	if len(rows) > panelStoreMaxRows {
 		rows = rows[len(rows)-panelStoreMaxRows:]
 	}
 	s.rows[stream] = rows
+	s.loaded[stream] = true
 }
 
 // append adds one row to a stream and marks it dirty. Never blocks on I/O.
@@ -136,7 +150,9 @@ func (s *panelStore) ensureFlusherLocked() {
 	}()
 }
 
-// Flush writes all dirty streams to disk. Safe to call at any time.
+// Flush writes all dirty streams to disk. Safe to call at any time. A write
+// failure keeps the stream dirty so the next tick retries it instead of
+// silently dropping the rows.
 func (s *panelStore) Flush() {
 	s.mu.Lock()
 	if !s.dirty || s.dir == "" {
@@ -150,28 +166,46 @@ func (s *panelStore) Flush() {
 		snapshot[k] = cp
 	}
 	dir := s.dir
-	s.dirty = false
 	s.mu.Unlock()
 
+	failed := false
 	for stream, rows := range snapshot {
-		writePanelJSON(filepath.Join(dir, string(stream)+".json"), rows)
+		if err := writePanelJSON(filepath.Join(dir, string(stream)+".json"), rows); err != nil {
+			failed = true
+			log.Printf("WARN: panel store: flush %s: %v", stream, err)
+		}
 	}
+	if failed {
+		// Re-arm so the next tick retries; rows appended meanwhile are still in
+		// s.rows and will be included.
+		s.mu.Lock()
+		s.dirty = true
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Lock()
+	s.dirty = false
+	s.mu.Unlock()
 }
 
 // writePanelJSON atomically replaces a JSON file (tmp + rename).
-func writePanelJSON(path string, rows []json.RawMessage) {
+func writePanelJSON(path string, rows []json.RawMessage) error {
 	if rows == nil {
 		rows = []json.RawMessage{}
 	}
 	raw, err := json.Marshal(rows)
 	if err != nil {
-		return
+		return err
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return
+		return err
 	}
-	_ = os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // list returns up to limit rows of a stream, newest first.

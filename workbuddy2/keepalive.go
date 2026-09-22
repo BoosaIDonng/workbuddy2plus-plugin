@@ -338,6 +338,11 @@ func handleKeepaliveNowWithCallback(req pluginapi.ManagementRequest, callbackID 
 		sum := runTokenKeepaliveWithCallback(callbackID)
 		return map[string]any{"when": sum.When, "results": sum.Results}
 	}
+	// Membership check: refresh writes the credential back, so the index must
+	// name a workbuddy account the host knows about.
+	if _, err := requireWorkbuddyAuthIndex(authIndex); err != nil {
+		return map[string]any{"error": "account not found"}
+	}
 	sa, err := hostAuthGet(authIndex)
 	if err != nil {
 		return map[string]any{"error": err.Error()}

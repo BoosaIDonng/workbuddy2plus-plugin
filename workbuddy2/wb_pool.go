@@ -76,6 +76,12 @@ func syncPoolFromHost() {
 // when no candidate is healthy in the pool, leaving the decision to the host.
 // The host's candidate list is authoritative: Pick walks the whole pool in
 // weight order, so we retry until it lands on an offered candidate.
+//
+// The draw budget must cover every pool entry that is *not* a candidate —
+// the pool tracks the whole host list while candidates are additionally
+// filtered by model readiness, so len(candidates) draws can exhaust on
+// non-candidates and silently drop the weighted pick (the caller then falls
+// back to the panel-selected account). Budget the full pool size instead.
 func pickFromPool(candidates []string, model string) string {
 	if len(candidates) == 0 {
 		return ""
@@ -85,8 +91,12 @@ func pickFromPool(candidates []string, model string) string {
 		allowed[id] = true
 	}
 	p := poolInstance()
+	budget := len(p.List()) + len(candidates)
+	if budget <= 0 {
+		budget = len(candidates)
+	}
 	tried := map[string]bool{}
-	for range candidates {
+	for i := 0; i < budget; i++ {
 		acct := p.PickExcludingForRealm(tried, model, "")
 		if acct == nil {
 			return ""
@@ -128,9 +138,16 @@ func applyUpstreamError(authID, model string, status int, body string) {
 			p.CooldownSoftRate(authID, 10*time.Minute, time.Time{}, "rate limited")
 		}
 	case wupstream.ErrHardCredit:
-		p.Cooldown(authID, wpool.CoolHard, 0, "credits exhausted")
+		// Cooldown(kind, 0) stores until=now, i.e. already expired — the account
+		// stays fully healthy and keeps absorbing traffic that will fail. Cool
+		// until the next 04:00 so the check-in task (09:00/21:00) can restore it.
+		p.CooldownUntilTomorrow4AM(authID, "credits exhausted")
 	case wupstream.ErrSessionDead:
-		p.Disable(authID, "session dead")
+		// NoteSessionDead applies the 3-strike threshold the pool documents:
+		// a single 12153 is usually network jitter / an upstream blip, and
+		// Disable() here would remove the account from routing permanently
+		// (nothing in production calls ReviveDisabled).
+		p.NoteSessionDead(authID)
 	case wupstream.ErrServer:
 		p.NoteError(authID)
 	default:
@@ -139,17 +156,26 @@ func applyUpstreamError(authID, model string, status int, body string) {
 	}
 }
 
-// notePoolSuccess clears failure counters after a clean request.
+// notePoolSuccess clears failure counters after a clean request and clears the
+// consecutive-12153 counter: a completed request proves the session is alive,
+// which is the documented ClearSessionDead trigger.
 func notePoolSuccess(authID string) {
 	if authID == "" {
 		return
 	}
-	poolInstance().NoteSuccess(authID)
+	p := poolInstance()
+	p.NoteSuccess(authID)
+	p.ClearSessionDead(authID)
 }
 
 // expiringCredits sums the credit already available in packages whose billing
 // cycle ends within `within`. Derived from the credits snapshot the panel
 // already holds, so the pool's expiry preference costs no upstream call.
+//
+// CycleEnd is an upstream UTC+8 wall clock (same convention the upstream client
+// parses it with), so it must be parsed in SoftRateResetLoc — parsing it as
+// time.Local shifts the expiry by the container's offset and silently
+// mis-classifies credits near the window boundary.
 func expiringCredits(cr *creditsSummary, within time.Duration) int64 {
 	if cr == nil {
 		return 0
@@ -157,7 +183,7 @@ func expiringCredits(cr *creditsSummary, within time.Duration) int64 {
 	deadline := time.Now().Add(within)
 	var sum int64
 	for _, p := range cr.Packages {
-		end, err := time.ParseInLocation("2006-01-02 15:04:05", p.CycleEnd, time.Local)
+		end, err := time.ParseInLocation("2006-01-02 15:04:05", p.CycleEnd, wupstream.SoftRateResetLoc())
 		if err != nil || end.After(deadline) {
 			continue
 		}

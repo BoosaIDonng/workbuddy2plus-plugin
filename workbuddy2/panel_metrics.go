@@ -54,10 +54,27 @@ type taskRow struct {
 
 // ttfbTracker measures time-to-first-token per streaming request. The executor
 // hot path records the first non-empty content delta; publishUsage reads it.
+//
+// The mark and its consumer must derive the model identically. noteFirstToken
+// receives the raw upstreamModel (which can be empty) while recordRequest falls
+// back to the requested alias, so both sides normalise through ttfbModelKey —
+// otherwise a mark written under an empty model is looked up under the alias and
+// never consumed, leaking one entry per streaming request until the size guard
+// wipes the whole map (taking in-flight marks and their TTFB with it).
 var ttfbTracker = struct {
 	sync.Mutex
 	marks map[string]time.Time // key: authID+model+startedUnixNano
 }{marks: map[string]time.Time{}}
+
+// ttfbModelKey normalises the model component of a TTFB key, mirroring the
+// alias fallback in recordRequest.
+func ttfbModelKey(upstreamModel, requestedModel string) string {
+	m := strings.TrimSpace(upstreamModel)
+	if m == "" {
+		m = strings.TrimSpace(requestedModel)
+	}
+	return m
+}
 
 func ttfbKey(authID, model string, started time.Time) string {
 	return authID + "|" + model + "|" + fmt.Sprint(started.UnixNano())
@@ -66,13 +83,18 @@ func ttfbKey(authID, model string, started time.Time) string {
 // noteFirstToken marks the first token of a streaming request. authID is the
 // account identifier the executor passes to publishUsage (uid when known), so
 // the mark and its consumption always use the same key.
-func noteFirstToken(authID, model string, started time.Time) {
+func noteFirstToken(authID, upstreamModel, requestedModel string, started time.Time) {
 	ttfbTracker.Lock()
 	defer ttfbTracker.Unlock()
-	key := ttfbKey(authID, model, started)
+	key := ttfbKey(authID, ttfbModelKey(upstreamModel, requestedModel), started)
 	if len(ttfbTracker.marks) > 4096 { // defensive: never grow unbounded
-		for k := range ttfbTracker.marks {
-			delete(ttfbTracker.marks, k)
+		// Drop only entries old enough that their request must have finished —
+		// a full wipe would erase marks for streams still in flight.
+		cutoff := time.Now().Add(-5 * time.Minute)
+		for k, at := range ttfbTracker.marks {
+			if at.Before(cutoff) {
+				delete(ttfbTracker.marks, k)
+			}
 		}
 	}
 	ttfbTracker.marks[key] = time.Now()
@@ -94,11 +116,8 @@ func takeTTFB(authID, model string, started time.Time) int64 {
 // recordRequest appends one request-log row. Called from publishUsage, which
 // already runs at every executor outcome.
 func recordRequest(authID, requestedModel, upstreamModel string, started time.Time, detail usage.Detail, failed bool, statusCode int, errBody string) {
-	model := strings.TrimSpace(upstreamModel)
+	model := ttfbModelKey(upstreamModel, requestedModel)
 	alias := strings.TrimSpace(requestedModel)
-	if model == "" {
-		model = alias
-	}
 	if alias == "" {
 		alias = model
 	}

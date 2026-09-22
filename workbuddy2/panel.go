@@ -155,6 +155,10 @@ func buildDashboardExWithCallback(force, fetchCredits bool, callbackID string) m
 	// Also prune stale lifecycle state and checkin locks for gone accounts.
 	pruneLifecycleState()
 	pruneCheckinLocks()
+	// Per-day task guards: drop yesterday's marks so the maps do not keep one
+	// entry per uid ever seen.
+	pruneGrowthClaimed()
+	pruneAdoptAttempted()
 	out := make([]wbAccount, len(files))
 	// Accounts are independent — fetch their dashboards concurrently. With 4
 	// accounts this cuts cold-load latency from ~4×(3 serial upstream calls)

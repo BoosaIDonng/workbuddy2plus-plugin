@@ -39,6 +39,16 @@ func uid8Of(uid string) string {
 	return uid[:8]
 }
 
+// isCoolingStatus reports whether the host status string means the account is
+// temporarily out of rotation (the host marks keepalive/checkin flows this way).
+func isCoolingStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "cooling", "rate_limited":
+		return true
+	}
+	return false
+}
+
 // accountReasons derives attention reasons for one dashboard account. The
 // host does not expose per-account cooling windows to the plugin, so "cooling"
 // is inferred from the host status string (keepalive/checkin flows mark it).
@@ -53,8 +63,7 @@ func accountReasons(a wbAccount) []string {
 	if strings.TrimSpace(a.Error) != "" {
 		reasons = append(reasons, "error")
 	}
-	switch strings.ToLower(strings.TrimSpace(a.Status)) {
-	case "cooling", "rate_limited", "disabled":
+	if isCoolingStatus(a.Status) {
 		reasons = append(reasons, "cooling")
 	}
 	return reasons
@@ -88,6 +97,10 @@ func buildOverviewFromAccounts(accounts []wbAccount, s map[string]any) overviewS
 			ov.Disabled++
 		case a.Exhausted:
 			ov.Exhausted++
+		case isCoolingStatus(a.Status):
+			// Checked before Healthy: a cooling account carries no Error, so the
+			// old ordering counted it as healthy and left Cooling at 0 forever.
+			ov.Cooling++
 		case strings.TrimSpace(a.Error) == "":
 			ov.Healthy++
 		}

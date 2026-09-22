@@ -285,9 +285,23 @@ func handleManagement(raw []byte) ([]byte, error) {
 		status, payload := handleAccountToggle(req.ManagementRequest)
 		return okEnvelope(mgmtJSONResponse(status, payload))
 	case req.Method == http.MethodPost && path == base+"/activity":
-		go runActivityTask() // minutes-long sweep; the panel polls /tasks
+		// Minutes-long sweep; the panel polls /tasks. The in-flight guard makes a
+		// double-click a no-op instead of a second report storm.
+		if !activityEnabled() {
+			return okEnvelope(mgmtJSONResponse(http.StatusConflict, map[string]any{"error": "activity task is disabled"}))
+		}
+		if activityRunning.Load() {
+			return okEnvelope(mgmtJSONResponse(http.StatusConflict, map[string]any{"error": "activity task is already running"}))
+		}
+		go runActivityTask()
 		return okEnvelope(mgmtJSONResponse(http.StatusAccepted, map[string]any{"started": true}))
 	case req.Method == http.MethodPost && path == base+"/travel":
+		if !travelEnabled() {
+			return okEnvelope(mgmtJSONResponse(http.StatusConflict, map[string]any{"error": "travel task is disabled"}))
+		}
+		if travelRunning.Load() {
+			return okEnvelope(mgmtJSONResponse(http.StatusConflict, map[string]any{"error": "travel task is already running"}))
+		}
 		go runTravelTask()
 		return okEnvelope(mgmtJSONResponse(http.StatusAccepted, map[string]any{"started": true}))
 	}
@@ -346,46 +360,114 @@ func checkManagementAuth(req pluginapi.ManagementRequest) (int, string) {
 	return 0, ""
 }
 
-// allowManagementRequest applies a per-IP token bucket. ip may be empty when the
-// host doesn't forward X-Forwarded-For / RemoteAddr — in that case use a single
-// global bucket.
+// allowManagementRequest applies token buckets to a failed authentication. It
+// always consumes from the shared global bucket and, when a client identifier is
+// available, from that client's bucket too — both must allow.
+//
+// The global bucket is what makes the limit real: the per-IP key comes from a
+// client-supplied header (see managementClientIP), so an attacker rotating
+// X-Forwarded-For would otherwise get a fresh burst per request and never be
+// throttled at all.
 func allowManagementRequest(ip string) bool {
-	if ip == "" {
-		ip = "_global"
-	}
 	mgmtRateLimitMu.Lock()
 	defer mgmtRateLimitMu.Unlock()
 	now := time.Now()
-	e, ok := mgmtRateLimit[ip]
+	// Check both buckets before consuming either, so a rejection does not burn
+	// the other bucket's tokens.
+	if !mgmtBucketAllows(mgmtRateLimitGlobalKey, now) {
+		return false
+	}
+	if ip != "" && !mgmtBucketAllows(ip, now) {
+		return false
+	}
+	mgmtConsumeBucket(mgmtRateLimitGlobalKey, now)
+	if ip != "" {
+		mgmtConsumeBucket(ip, now)
+	}
+	mgmtRateLimitEvict(now)
+	return true
+}
+
+// mgmtRateLimitGlobalKey names the bucket shared by all callers.
+const mgmtRateLimitGlobalKey = "_global"
+
+// mgmtRateLimitMaxEntries bounds the per-IP map so a header-rotating attacker
+// cannot grow it without limit.
+const mgmtRateLimitMaxEntries = 4096
+
+// mgmtBucketAllows reports whether the named bucket has a token available,
+// refilling it in place.
+func mgmtBucketAllows(key string, now time.Time) bool {
+	e, ok := mgmtRateLimit[key]
+	if !ok {
+		return true // a fresh bucket starts full
+	}
+	return mgmtRefilled(e, now).tokens >= 1
+}
+
+// mgmtConsumeBucket refills the named bucket and spends one token.
+func mgmtConsumeBucket(key string, now time.Time) {
+	e, ok := mgmtRateLimit[key]
 	if !ok {
 		e = &mgmtRateEntry{tokens: mgmtRateLimitCapacity, lastSeen: now}
-		mgmtRateLimit[ip] = e
+		mgmtRateLimit[key] = e
 	}
-	// Refill.
-	elapsed := now.Sub(e.lastSeen)
-	e.tokens += float64(elapsed) / float64(mgmtRateLimitRefill)
+	e = mgmtRefilled(e, now)
+	e.tokens--
+	e.lastSeen = now
+}
+
+// mgmtRefilled applies elapsed-time refill, capped at the burst size.
+func mgmtRefilled(e *mgmtRateEntry, now time.Time) *mgmtRateEntry {
+	e.tokens += float64(now.Sub(e.lastSeen)) / float64(mgmtRateLimitRefill)
 	if e.tokens > mgmtRateLimitCapacity {
 		e.tokens = mgmtRateLimitCapacity
 	}
-	e.lastSeen = now
-	if e.tokens < 1 {
-		return false
+	return e
+}
+
+// mgmtRateLimitEvict drops idle buckets, and hard-caps the map when an attacker
+// keeps every entry fresh with rotating keys. Runs on every call (the old code
+// only swept above 1024 entries, so a slow attacker kept the map growing).
+func mgmtRateLimitEvict(now time.Time) {
+	if len(mgmtRateLimit) <= mgmtRateLimitMaxEntries {
+		return
 	}
-	e.tokens--
-	// Lazy eviction of idle entries (don't grow the map forever).
-	if len(mgmtRateLimit) > 1024 {
-		for k, v := range mgmtRateLimit {
-			if now.Sub(v.lastSeen) > mgmtRateLimitTTL {
-				delete(mgmtRateLimit, k)
-			}
+	for k, v := range mgmtRateLimit {
+		if k == mgmtRateLimitGlobalKey {
+			continue // never evict the bucket that cannot be bypassed
+		}
+		if now.Sub(v.lastSeen) > mgmtRateLimitTTL {
+			delete(mgmtRateLimit, k)
 		}
 	}
-	return true
+	// Still over the cap: drop the least recently seen entries.
+	for len(mgmtRateLimit) > mgmtRateLimitMaxEntries {
+		oldestKey := ""
+		var oldest time.Time
+		for k, v := range mgmtRateLimit {
+			if k == mgmtRateLimitGlobalKey {
+				continue
+			}
+			if oldestKey == "" || v.lastSeen.Before(oldest) {
+				oldestKey, oldest = k, v.lastSeen
+			}
+		}
+		if oldestKey == "" {
+			return
+		}
+		delete(mgmtRateLimit, oldestKey)
+	}
 }
 
 // managementClientIP extracts a best-effort client identifier for rate limiting.
 // CPA host doesn't currently forward RemoteAddr, so fall back to X-Forwarded-For
 // / X-Real-IP headers if the deployment adds them via a reverse proxy.
+//
+// This value is advisory, not a security boundary: the headers are
+// client-supplied and the first X-Forwarded-For element is whatever the caller
+// claims. allowManagementRequest therefore always consumes from the global
+// bucket as well, so rotating this value cannot buy extra attempts.
 func managementClientIP(req pluginapi.ManagementRequest) string {
 	if xff := strings.TrimSpace(req.Headers.Get("X-Forwarded-For")); xff != "" {
 		if i := strings.Index(xff, ","); i > 0 {

@@ -11,8 +11,9 @@ package main
 import (
 	"log"
 	"strconv"
-
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	wauth "github.com/sliverkiss/workbuddy2plus-plugin/internal/auth"
@@ -27,31 +28,70 @@ const (
 	travelAccountDelay = 800 * time.Millisecond
 )
 
-// adoptionAttempted records accounts whose adoption was rejected today because
-// the conversation threshold was not met (uid -> CST date). Retrying the same
-// day would only hammer the upstream; the next day retries naturally.
+// adoptionAttempted records accounts whose adoption was rejected because the
+// conversation threshold was not met (uid -> "<CST date>|<generation>").
+// Retrying the same day would only hammer the upstream; the next day retries
+// naturally.
+//
+// The generation half is what makes the activity task useful: a rejection at
+// 09:00 is invalidated as soon as the 10:00 activity sweep tops the
+// conversation count up, so the 21:00 travel run retries instead of waiting a
+// full day for the +300 credit.
 var (
 	adoptMu        sync.Mutex
 	adoptAttempted = map[string]string{}
 )
 
-func adoptTriedToday(uid string) bool {
-	adoptMu.Lock()
-	defer adoptMu.Unlock()
-	return adoptAttempted[uid] == cstDate(time.Now())
+// adoptGeneration advances whenever the activity task completes a sweep.
+var adoptGeneration atomic.Int64
+
+// adoptMark renders the current (CST day, generation) pair.
+func adoptMark() string {
+	return cstDate(time.Now()) + "|" + strconv.FormatInt(adoptGeneration.Load(), 10)
 }
 
-func markAdoptTried(uid string) {
+// reserveAdoptSlot atomically claims today's adoption attempt for uid at the
+// current generation. It returns false when an attempt at this generation has
+// already been made or is in flight — the guard must be taken *before* the
+// upstream call, since BuddyFirst grants +300 credits and a check-then-act pair
+// lets two concurrent sweeps both pass.
+func reserveAdoptSlot(uid string) bool {
+	mark := adoptMark()
 	adoptMu.Lock()
 	defer adoptMu.Unlock()
-	adoptAttempted[uid] = cstDate(time.Now())
+	if adoptAttempted[uid] == mark {
+		return false
+	}
+	adoptAttempted[uid] = mark
+	return true
 }
 
-// runTravelTask advances every usable CN account's buddy by one step.
-func runTravelTask() {
+// pruneAdoptAttempted drops marks from other CST days or older generations.
+// Called from the dashboard prune path so the map does not keep one entry per
+// uid ever seen.
+func pruneAdoptAttempted() {
+	today := cstDate(time.Now())
+	adoptMu.Lock()
+	defer adoptMu.Unlock()
+	for uid, mark := range adoptAttempted {
+		if !strings.HasPrefix(mark, today+"|") {
+			delete(adoptAttempted, uid)
+		}
+	}
+}
+
+// runTravelTask advances every usable CN account's buddy by one step. Returns
+// false when another sweep is already in flight.
+func runTravelTask() bool {
+	if !travelRunning.CompareAndSwap(false, true) {
+		log.Printf("travel: skipped (a sweep is already running)")
+		return false
+	}
+	defer travelRunning.Store(false)
+
 	accounts := cnAccounts()
 	if len(accounts) == 0 {
-		return
+		return true
 	}
 	log.Printf("travel: start for %d account(s)", len(accounts))
 	for i, acct := range accounts {
@@ -61,6 +101,7 @@ func runTravelTask() {
 		travelOne(acct)
 	}
 	log.Printf("travel: done")
+	return true
 }
 
 // travelOne is the per-account state machine: at most one action, no polling.
@@ -72,7 +113,7 @@ func travelOne(acct *wauth.Auth) {
 		return
 	}
 	if buddy == nil {
-		adoptBuddy(acct, false)
+		adoptBuddy(acct)
 		return
 	}
 	ts, err := wbClient.TravelStatus(acct)
@@ -127,12 +168,14 @@ func travelClaim(acct *wauth.Auth, ts *wupstream.TravelState) {
 }
 
 // adoptBuddy adopts a buddy: agree to the terms (idempotent) then first-adopt.
-// A conversation-threshold rejection is expected behaviour — it is recorded for
-// the day and silently skipped. force bypasses the daily debounce (used after
-// the activity task tops up the conversation count).
-func adoptBuddy(acct *wauth.Auth, force bool) {
+// A conversation-threshold rejection is expected behaviour — it is recorded and
+// skipped until the activity task tops the conversation count up (see
+// adoptGeneration), or until the next CST day.
+func adoptBuddy(acct *wauth.Auth) {
 	label := accountLabel(acct)
-	if !force && adoptTriedToday(acct.UID) {
+	// Reserve before the upstream call: BuddyFirst grants +300 credits, so the
+	// guard cannot be a check-then-act pair.
+	if !reserveAdoptSlot(acct.UID) {
 		return
 	}
 	if err := wbClient.BuddyAgreement(acct); err != nil {
@@ -145,8 +188,7 @@ func adoptBuddy(acct *wauth.Auth, force bool) {
 		log.Printf("travel %s: adopt ok (+300 credits)", label)
 		recordTask("travel-adopt", acct.Nickname, true, "+300 credit")
 	case wupstream.IsBuddyTaskIncomplete(err):
-		markAdoptTried(acct.UID)
-		log.Printf("travel %s: adopt skipped (conversation threshold not reached, retry tomorrow)", label)
+		log.Printf("travel %s: adopt skipped (conversation threshold not reached, retry after the activity task)", label)
 	default:
 		log.Printf("travel %s: adopt: %v", label, err)
 	}

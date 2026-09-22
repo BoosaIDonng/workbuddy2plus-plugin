@@ -81,3 +81,25 @@ func hostAuthGetBundle(authIndex string) (*storedAuth, *hostAuthPhysical, error)
 	}
 	return sa, phys, nil
 }
+
+// requireWorkbuddyAuthIndex validates that authIndex names a workbuddy account
+// the host actually knows about, returning the matching list entry.
+//
+// Every handler that writes an auth file must call this first. host.auth.get
+// resolves *any* provider's index, and the write pipeline rebuilds the file in
+// workbuddy shape (buildAuthFileJSON hardcodes type/provider), so an unvalidated
+// index would overwrite a different provider's credential. hostAuthList is
+// already filtered to workbuddy names, so membership doubles as the type check.
+func requireWorkbuddyAuthIndex(authIndex string) (pluginapi.HostAuthFileEntry, error) {
+	var zero pluginapi.HostAuthFileEntry
+	files, err := hostAuthList()
+	if err != nil {
+		return zero, err
+	}
+	for _, f := range files {
+		if f.AuthIndex == authIndex {
+			return f, nil
+		}
+	}
+	return zero, fmt.Errorf("auth_index is not a workbuddy account")
+}

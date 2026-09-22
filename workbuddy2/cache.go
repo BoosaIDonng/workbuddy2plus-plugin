@@ -6,6 +6,7 @@ package main
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -16,6 +17,10 @@ type accountCacheEntry struct {
 	credits *creditsSummary
 	plan    string
 	fetched time.Time
+	// uid is the upstream account uid this entry belongs to. It lets
+	// invalidateAccountCredits match a cache key from the executor's uid without
+	// a host.auth.list round-trip on the chat hot path.
+	uid string
 }
 
 var (
@@ -134,7 +139,11 @@ func cachedAccountDetailsWithCallback(authID string, sa *storedAuth, force bool,
 		// Stamp snapshot time for panel/API consumers (A-09 observability).
 		cr.FetchedAt = now.UTC().Format(time.RFC3339)
 	}
-	accountCache.Store(authID, &accountCacheEntry{checkin: ci, credits: cr, plan: plan, fetched: now})
+	uid := ""
+	if sa != nil {
+		uid = strings.TrimSpace(sa.Account.UID)
+	}
+	accountCache.Store(authID, &accountCacheEntry{checkin: ci, credits: cr, plan: plan, fetched: now, uid: uid})
 	// Soft cap: if map is huge, drop oldest-looking entries beyond bound.
 	pruneAccountCacheSoftCap(accountCacheSoftCap)
 	return plan, ci, cr, errList

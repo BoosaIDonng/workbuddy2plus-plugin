@@ -129,6 +129,12 @@ func handleAccountToggle(req pluginapi.ManagementRequest) (int, any) {
 	if body.Disabled == nil {
 		return http.StatusBadRequest, map[string]any{"error": "disabled is required"}
 	}
+	// Membership check before the write: host.auth.get resolves any provider's
+	// index, and the write path rebuilds the file in workbuddy shape — an
+	// unvalidated index would clobber another provider's credential.
+	if _, err := requireWorkbuddyAuthIndex(idx); err != nil {
+		return http.StatusNotFound, map[string]any{"error": "account not found"}
+	}
 	sa, _, err := hostAuthGetBundle(idx)
 	if err != nil {
 		return http.StatusNotFound, map[string]any{"error": "account not found"}
