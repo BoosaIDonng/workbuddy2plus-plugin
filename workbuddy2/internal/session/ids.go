@@ -223,3 +223,9 @@ func TurnRequestID(turnKey string) string {
 	sum := sha256.Sum256([]byte(deriveSalt + "|" + turnKey))
 	return hex.EncodeToString(sum[:16])
 }
+
+// strOrEmpty returns v when it is a string, else "" (JSON map helper).
+func strOrEmpty(v any) string {
+	s, _ := v.(string)
+	return s
+}

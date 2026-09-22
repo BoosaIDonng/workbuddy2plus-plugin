@@ -1,12 +1,12 @@
-// usage.go keeps only the local usage-detail extraction used by the executor
-// paths (sseUsageCollector, usageDetailFromMap/Completion). The CPAMP usage
-// forwarder was removed: publishUsage is now a no-op kept for call-site
-// stability, and the host UsagePlugin callback is acknowledged without
-// forwarding (usage stays inside CPA's own DefaultManager).
+// usage.go keeps the local usage-detail extraction used by the executor paths
+// (sseUsageCollector, usageDetailFromMap/Completion). publishUsage is the
+// single executor-outcome hook: it feeds the panel request log and the account
+// pool. The host still records usage into its own DefaultManager.
 package main
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage"
@@ -19,11 +19,21 @@ func handleUsage(raw []byte) ([]byte, error) {
 }
 
 // publishUsage records one executor attempt into the panel request log
-// (model, status, TTFB, latency, tokens, account). It is called at every
-// executor outcome, so the chat path needs no extra branching. The previous
-// CPAMP forwarding was removed; this local record is the only consumer.
+// (model, status, TTFB, latency, tokens, account) and feeds the outcome into
+// the account pool so the next pick avoids a failing account — or, for the
+// per-model 6004 limit, just that one model. It is called at every executor
+// outcome, so the chat path needs no extra branching.
 func publishUsage(requestedModel, upstreamModel, authID string, started time.Time, detail usage.Detail, failed bool, statusCode int, errBody string) {
 	recordRequest(authID, requestedModel, upstreamModel, started, detail, failed, statusCode, errBody)
+	model := strings.TrimSpace(upstreamModel)
+	if model == "" {
+		model = strings.TrimSpace(requestedModel)
+	}
+	if failed {
+		applyUpstreamError(authID, model, statusCode, errBody)
+	} else {
+		notePoolSuccess(authID)
+	}
 }
 
 // hasAssistantText reports whether an SSE frame carries assistant-visible

@@ -86,17 +86,27 @@ func handleSchedulerPick(raw []byte) ([]byte, error) {
 		return okEnvelope(pluginapi.SchedulerPickResponse{Handled: false})
 	}
 
-	// Build thin view for active-auth picker.
-	cands := make([]activeAuthCandidate, 0, len(wbCandidates))
+	// Build thin view for the pool: IDs are auth UIDs (toAuthDataOpts sets
+	// ID=uid), which is exactly what the pool indexes on.
+	ids := make([]string, 0, len(wbCandidates))
 	for _, c := range wbCandidates {
-		_, exhausted := cachedCreditsScore(c.ID)
-		cands = append(cands, activeAuthCandidate{
-			ID:        c.ID,
-			Disabled:  false, // already filtered
-			Exhausted: exhausted,
-		})
+		ids = append(ids, c.ID)
 	}
-	picked := pickActiveAuth(cands)
+	// Refresh pool entries from the host list, then pick by three-factor weight
+	// (credits ratio ×10 + credit-expiry preference + idle compensation), with
+	// per-model 6004 exemptions applied inside the pool.
+	syncPoolFromHost()
+	picked := pickFromPool(ids, req.Model)
+	if picked == "" {
+		// Pool has nothing healthy: fall back to the panel-selected account so a
+		// stale pool never takes routing down.
+		cands := make([]activeAuthCandidate, 0, len(wbCandidates))
+		for _, c := range wbCandidates {
+			_, exhausted := cachedCreditsScore(c.ID)
+			cands = append(cands, activeAuthCandidate{ID: c.ID, Exhausted: exhausted})
+		}
+		picked = pickActiveAuth(cands)
+	}
 	if picked == "" {
 		return okEnvelope(pluginapi.SchedulerPickResponse{Handled: false})
 	}

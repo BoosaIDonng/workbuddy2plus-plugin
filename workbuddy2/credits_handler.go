@@ -267,6 +267,10 @@ func handleCreditsQueryWithCallback(req pluginapi.ManagementRequest, callbackID 
 						before = prev.credits.TotalRemain
 					}
 					recordLedger(sa.Account.UID, sa.Account.Nickname, before, cr.TotalRemain, "credits-query")
+					// Feed the pool so the weighted pick prefers spending credits
+					// that expire soonest. Derived locally from the package cycle
+					// windows — no extra upstream call.
+					poolInstance().SetCreditsDetailed(f.ID, cr.TotalRemain, expiringCredits(cr, 7*24*time.Hour))
 				}
 				accountCache.Store(f.ID, &accountCacheEntry{
 					checkin: ci, credits: cr, plan: plan, fetched: now,

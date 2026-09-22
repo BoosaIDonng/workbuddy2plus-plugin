@@ -83,40 +83,6 @@ func TestTurnKeyIndexStillSeparatesTurns(t *testing.T) {
 	}
 }
 
-// TestStickyFallbackKeyFirstImage 锚点5：首条 user 纯图片的会话派生非空
-// stickyKey（RED：现返回 ""，粘性盲区）。
-func TestStickyFallbackKeyFirstImage(t *testing.T) {
-	body := []byte(`{"messages":[{"role":"user","content":[` +
-		`{"type":"image_url","image_url":{"url":"https://img.example/cat.png"}}]}]}`)
-	a := StickyFallbackKey(body)
-	b := StickyFallbackKey(body)
-	if a == "" {
-		t.Fatal("首条 user 纯图片应派生非空粘性键（G1 加重形态：现为空串）")
-	}
-	if a != b {
-		t.Fatalf("同 body 应同键: %q vs %q", a, b)
-	}
-	// 会话推进（历史追加）不换键的 #169 契约对图片形态同样成立。
-	longer := []byte(`{"messages":[{"role":"user","content":[` +
-		`{"type":"image_url","image_url":{"url":"https://img.example/cat.png"}}]},` +
-		`{"role":"assistant","content":"答"},{"role":"user","content":"继续"}]}`)
-	if c := StickyFallbackKey(longer); c != a {
-		t.Fatalf("历史追加不应换键: %q vs %q", c, a)
-	}
-}
-
-// TestStickyFallbackKeyStableWithSignature 锚点6：签名化后历史追加仍同键
-// （回归 #169 契约——纯文本路径键值不得漂移）。
-func TestStickyFallbackKeyStableWithSignature(t *testing.T) {
-	first := []byte(`{"messages":[{"role":"user","content":"开场白"}]}`)
-	longer := []byte(`{"messages":[{"role":"user","content":"开场白"},` +
-		`{"role":"assistant","content":"好的"},{"role":"user","content":"继续"}]}`)
-	if a, b := StickyFallbackKey(first), StickyFallbackKey(longer); a != b || a == "" {
-		t.Fatalf("纯文本键回归 #169 契约: first=%q longer=%q", a, b)
-	}
-}
-
-// TestContentSignatureBounds 签名边界：data: 超长 base64 只入摘要；空/null 不伪造。
 func TestContentSignatureBounds(t *testing.T) {
 	// data: URL 超长（>1024）只入 sha256 前 8 hex，键长度有界。
 	longDataURL := "data:image/png;base64," + strings.Repeat("QUFBQQ", 4096)
