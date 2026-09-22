@@ -73,7 +73,13 @@ func pickFromPool(candidates []string, model string) string {
 	}
 	allowed := make(map[string]bool, len(candidates))
 	for _, id := range candidates {
-		allowed[id] = true
+		_, exhausted := cachedCreditsScore(id)
+		if !exhausted {
+			allowed[id] = true
+		}
+	}
+	if len(allowed) == 0 {
+		return ""
 	}
 	p := poolInstance()
 	budget := len(p.List()) + len(candidates)

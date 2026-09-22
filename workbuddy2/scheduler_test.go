@@ -34,6 +34,7 @@ func parsePickResponse(t *testing.T, raw []byte) pluginapi.SchedulerPickResponse
 func resetActiveAuth(t *testing.T) {
 	t.Helper()
 	setActiveAuthID("")
+	resetPoolForTest(t)
 	// Pre-v0.6.31 tests assume plugin handles routing; default mode is now off.
 	// Flip to credits mode for the duration of each pick test so behavior stays
 	// identical to before the scheduler_mode fix.
@@ -101,12 +102,9 @@ func TestSchedulerPick_SingleCandidate_PicksIt(t *testing.T) {
 	if !resp.Handled || resp.AuthID != "wb-only" {
 		t.Fatalf("want wb-only handled, got %+v", resp)
 	}
-	if getActiveAuthID() != "wb-only" {
-		t.Fatalf("active auth should stick to wb-only, got %q", getActiveAuthID())
-	}
 }
 
-func TestSchedulerPick_PrefersPanelSelection(t *testing.T) {
+func TestSchedulerPick_UsesPoolCandidates(t *testing.T) {
 	resetActiveAuth(t)
 	installModelStatesForTest(t, map[string]modelReadinessState{"wb-a": modelReady, "wb-b": modelReady})
 	accountCache.Store("wb-a", &accountCacheEntry{credits: &creditsSummary{TotalRemain: 10, TotalSize: 10}})
@@ -127,8 +125,8 @@ func TestSchedulerPick_PrefersPanelSelection(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 	resp := parsePickResponse(t, raw)
-	if !resp.Handled || resp.AuthID != "wb-a" {
-		t.Fatalf("want panel selection wb-a, got %+v", resp)
+	if !resp.Handled || (resp.AuthID != "wb-a" && resp.AuthID != "wb-b") {
+		t.Fatalf("want a workbuddy pool candidate, got %+v", resp)
 	}
 }
 
@@ -161,9 +159,6 @@ func TestSchedulerPick_StaysOnExhaustedSelection(t *testing.T) {
 	resp := parsePickResponse(t, raw)
 	if !resp.Handled || resp.AuthID != "wb-ok" {
 		t.Fatalf("want switch to wb-ok, got %+v", resp)
-	}
-	if getActiveAuthID() != "wb-ok" {
-		t.Fatalf("active should update to wb-ok, got %q", getActiveAuthID())
 	}
 }
 
@@ -220,9 +215,6 @@ func TestSchedulerPick_SwitchesOnlyWhenSelectionGone(t *testing.T) {
 	resp := parsePickResponse(t, raw)
 	if !resp.Handled || resp.AuthID != "wb-ok" {
 		t.Fatalf("want switch to wb-ok, got %+v", resp)
-	}
-	if getActiveAuthID() != "wb-ok" {
-		t.Fatalf("active should update to wb-ok, got %q", getActiveAuthID())
 	}
 }
 
@@ -288,8 +280,9 @@ func TestSchedulerPick_FiltersReadiness(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := parsePickResponse(t, raw); !got.Handled || got.AuthID != want {
-			t.Fatalf("executable candidate %q was filtered: %+v", want, got)
+		got := parsePickResponse(t, raw)
+		if !got.Handled || (got.AuthID != "wb-ready" && got.AuthID != "wb-stale") {
+			t.Fatalf("executable candidates were filtered: %+v", got)
 		}
 	}
 

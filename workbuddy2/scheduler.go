@@ -1,9 +1,8 @@
 // scheduler.go implements the CPA scheduler.pick capability for workbuddy.
 //
-// Routing uses the panel-selected active account (region from that card's
-// domain). When the selection is exhausted/disabled/missing, randomly switch
-// to another non-exhausted workbuddy candidate. Non-workbuddy candidates are
-// always deferred so the built-in scheduler handles them.
+// In credits mode, the plugin orders workbuddy candidates through the local
+// account pool. Non-workbuddy candidates are always deferred so the built-in
+// scheduler handles them.
 package main
 
 import (
@@ -14,8 +13,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
-// Legacy config values kept for configure() compatibility; pick always uses
-// panel active-auth selection now (not credit-max ranking).
+// Config values kept for configure() compatibility.
 const (
 	schedulerModeOff     = "off"
 	schedulerModeCredits = "credits"
@@ -45,14 +43,14 @@ func loadedSchedulerMode() string {
 	return schedulerMode
 }
 
-// handleSchedulerPick selects a workbuddy auth candidate based on the
-// panel-selected active account. Non-workbuddy candidates are always deferred
-// (Handled: false) so the built-in scheduler handles them.
+// handleSchedulerPick selects a workbuddy auth candidate through the weighted
+// account pool. Non-workbuddy candidates are always deferred (Handled: false)
+// so the built-in scheduler handles them.
 //
 // scheduler_mode:
 //   - "off"     → plugin does NOT handle routing; defer everything to built-in.
-//   - "credits" → plugin picks via panel-selected active account (sticky, with
-//     fallback when that account becomes exhausted/disabled).
+//   - "credits" → plugin uses the three-factor weighted account pool, with a
+//     panel-selection fallback when the pool has no healthy candidate.
 //
 // Default is off (see schedulerMode init). Users opting into the plugin's
 // routing should set scheduler_mode: credits in plugin config.

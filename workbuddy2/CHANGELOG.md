@@ -9,6 +9,7 @@
 - Preserve unknown top-level JSON values as raw JSON while rewriting auth files,
   avoiding numeric precision loss in metadata the plugin does not own.
 - Keep account-pool state intact when an auth snapshot is incomplete.
+- Do not hand a known exhausted candidate back to the weighted pool picker.
 - Record scheduled check-in outcomes and granted credits in task history.
 - Remove the scheduler hot-path auth list/get N+1 RPC sequence.
 - Invalidate manual account-toggle state with the host auth entry ID.

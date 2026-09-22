@@ -224,18 +224,18 @@ func processAutoCheckinAccount(f pluginapi.HostAuthFileEntry, doCheckin bool) {
 	}
 }
 
-func recordCheckinTaskResult(account string, result map[string]any, callErr error) {
+func recordCheckinTaskResult(account string, out map[string]any, callErr error) {
 	if callErr != nil {
 		recordTaskCredit("checkin", account, false, 0, callErr.Error())
 		return
 	}
-	if result == nil {
+	if out == nil {
 		recordTaskCredit("checkin", account, false, 0, "empty check-in response")
 		return
 	}
-	message, _ := result["message"].(string)
-	recordTaskCredit("checkin", account, result["success"] == true,
-		jsonI64(result, "credit", "daily_credit"), message)
+	message, _ := out["message"].(string)
+	recordTaskCredit("checkin", account, out["success"] == true,
+		jsonI64(out, "credit", "daily_credit"), message)
 }
 
 // handleManualCheckin serves POST /checkin.
