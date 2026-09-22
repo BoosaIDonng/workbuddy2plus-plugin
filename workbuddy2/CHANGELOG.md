@@ -1,5 +1,156 @@
 # Changelog
 
+## 2.8.0
+
+### Credit visibility
+
+- Add a structured `credit` field to task records. Credit amounts were previously
+  free text inside `message`, and check-in — the task users care most about —
+  recorded none at all, because it copied the upstream `message` (usually empty)
+  instead of the `credit`/`daily_credit` numbers in the same response.
+- Record the real amount for every credit-granting task: check-in, growth
+  redeem/gift/compensation/lottery, and travel claim/adopt.
+- Add a credit column and a running-total tile to the tasks tab, and render task
+  keys in Chinese (unknown keys fall back to the raw key).
+- Return the check-in snapshot from `GET /credits`, fetched concurrently with
+  credits so a force refresh does not pay a second round-trip.
+- Merge check-in on the panel's lazy credit load and render a check-in row with
+  today's state, streak, today's grant and the week's count. Previously the card
+  always showed "not signed in" because `/accounts` is a light load that never
+  populates check-in.
+- Report `checked_in` / `checkin_known` from `GET /overview` and add a
+  today's-check-in tile. It shows `-` until a snapshot exists, because overview
+  makes no upstream calls and a bare `0` would read as "nobody signed in".
+
+## 2.7.0
+
+### Host-owned authorization
+
+- Remove the plugin's own management key. The key the panel asks for belongs to
+  the CPA host: its remote-management middleware requires it on every
+  `/v0/management/*` request and bans an IP after repeated failures. A second,
+  plugin-owned key could only reject the host's key — the one credential the
+  panel can obtain automatically.
+- Delete `checkManagementAuth`, `allowManagementRequest`, `managementClientIP`,
+  `mutatingManagementPath`, the per-IP token bucket, the `management_key` config
+  field and the `WB_MANAGEMENT_KEY` env parsing. This also removes the 429 a
+  normal panel session could hit.
+- Read the host key from same-origin `localStorage` regardless of whether the
+  panel is framed. The panel is served from the CPA origin either way, so
+  requiring an iframe only forced a manual prompt when the URL was opened
+  directly.
+
+## 2.6.2
+
+### Audit hardening
+
+- Guard the activity and travel sweeps against concurrent runs, and return 409
+  on a re-trigger. A double-click or a panel POST landing on the scheduled tick
+  ran the whole report storm twice and raced the reward chain.
+- Reserve the daily growth-claim and buddy-adoption slots atomically, before the
+  chain runs. Both are check-then-act guards spanning seconds of upstream calls,
+  and `GrowthRedeem` is a real credit grant whose idempotency key the client
+  regenerates per call — two concurrent triggers could redeem the same tier
+  twice.
+- Advance an adoption generation when the activity sweep completes, so a
+  threshold rejection at 09:00 does not block the 21:00 retry.
+- Cool an exhausted account until the next 04:00 instead of storing an
+  already-expired deadline, which left it fully selectable.
+- Apply the pool's documented three-strike threshold to 12153 instead of
+  disabling on the first one.
+- Parse the credit expiry wall-clock in the upstream UTC+8 zone rather than the
+  container's local zone.
+- Budget the pool pick by pool size, not candidate count; the previous budget
+  silently dropped the weighted pick about a third of the time.
+- Redact camelCase token keys. The plugin's own credential format is
+  `accessToken`, but only snake_case was matched, so an upstream body echoing
+  the credential reached logs and the persisted panel rows unredacted.
+- Validate `auth_index` against the host auth list before writing; `host.auth.get`
+  resolves any provider's index, and the write path rebuilds the file in
+  workbuddy shape, so an unvalidated index could clobber another provider's
+  credential.
+- Always consume from a global rate-limit bucket, so rotating `X-Forwarded-For`
+  can no longer buy a fresh burst per attempt.
+- Normalise the TTFB key on both sides. The mark used the raw upstream model
+  while the lookup used the alias fallback, orphaning one entry per streaming
+  request; the size guard then wiped the whole map, including in-flight marks.
+- Match cache entries by uid on the executor hot path instead of calling
+  `host.auth.list` plus up to N serial `host.auth.get` calls after every
+  successful chat.
+- Fetch the all-accounts `/credits` branch concurrently.
+- Keep a failed panel-store read from marking the stream loaded (the next flush
+  would have overwritten readable history), keep a failed write dirty so it
+  retries, and leave corrupt files on disk instead of clobbering them.
+- Count cooling accounts in the overview tile, and stop the first credit query
+  after a restart from recording the whole balance as an acquisition.
+
+## 2.6.0
+
+### Growth tasks
+
+- Add the daily activity-map task: activity reports, a streak self-check, and the
+  per-CST-day reward chain (gift/compensation packs, makeup card, streak tier
+  redeem, lottery draws).
+- Add the daily cat-travel task: buddy adoption, departure, arrival reward.
+- Run same-slot tasks concurrently so the minutes-long activity sweep does not
+  delay check-in or keepalive.
+- Add `activity_auto` / `travel_auto` toggles and manual trigger endpoints.
+
+## 2.5.0
+
+### Account pool
+
+- Wire the vendored pool into the executor: three-factor weighted pick with a
+  per-model 6004 cooldown, a circuit breaker, and credit-expiry preference.
+- Feed every executor outcome back into the pool (6004 → model cooldown, 429 →
+  account cooldown, 11102 → (account, model) negative cache, 402 → hard cooldown,
+  12153 → session-dead counter, 5xx → breaker).
+- Delete ~1700 lines of unreferenced `internal/scheduler`, `internal/redisstore`
+  and `internal/session` code.
+
+## 2.4.1
+
+### Observability
+
+- Add the panel store: mutex-guarded in-memory rows per stream, flushed with a
+  debounced atomic tmp+rename, capped at 2000 rows per stream.
+- Add the request log, credit ledger, task records and model center endpoints.
+- Add account shelf/restore, the credit-expiry countdown and the SVG trend chart.
+
+## 2.3.0
+
+### Usage view
+
+- Add `GET /usage?days=1..31` from the official billing endpoint
+  (`get-user-request-usage`), aggregated by model, Shanghai natural day and
+  client, with per-account concurrency and non-fatal per-account failures.
+
+## 2.2.0
+
+### Scope reduction
+
+- Remove CPAMP usage forwarding, the plugin-level proxy, the host HTTP
+  passthrough executor, and the panel's login wizard (OAuth login belongs to the
+  CPA host).
+
+## 2.1.0
+
+### Panel migration
+
+- Rebuild the panel as tabs (overview / accounts / settings) with GUI-style stat
+  cards, a needs-attention list, batch tasks and a settings page.
+- Add `GET /overview` with health buckets, credit totals and needs-attention.
+
+## 2.0.0
+
+### workbuddy2api core
+
+- Vendor the 2api core packages and bridge them to the plugin: model alias
+  rewriting, the full payload pipeline, and per-frame SSE normalization (error
+  frames passed through, `tool_calls` names converged by index, ids continued).
+- Replace all three execution paths (sync, async stream, sync fallback) with the
+  2api pipeline while keeping HTTP on the host bridge.
+
 ## 0.9.3
 
 ### Dynamic model bootstrap
