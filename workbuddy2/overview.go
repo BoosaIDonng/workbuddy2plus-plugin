@@ -26,6 +26,8 @@ type overviewSummary struct {
 	Disabled       int                 `json:"disabled"`
 	Exhausted      int                 `json:"exhausted"`
 	InFlightFull   int                 `json:"in_flight_full"`
+	CheckedIn      int                 `json:"checked_in"`
+	CheckinKnown   int                 `json:"checkin_known"`
 	Credits        map[string]any      `json:"credits"`
 	NeedsAttention []overviewAttention `json:"needs_attention"`
 	ServerTime     string              `json:"server_time"`
@@ -103,6 +105,15 @@ func buildOverviewFromAccounts(accounts []wbAccount, s map[string]any) overviewS
 			ov.Cooling++
 		case strings.TrimSpace(a.Error) == "":
 			ov.Healthy++
+		}
+		// Check-in counts only where the snapshot actually exists: /overview is
+		// built from the light-load dashboard, so an unfetched account has no
+		// check-in data and must not be counted as "not signed in".
+		if a.Checkin != nil {
+			ov.CheckinKnown++
+			if a.Checkin.TodayCheckedIn {
+				ov.CheckedIn++
+			}
 		}
 		reasons := accountReasons(a)
 		if len(reasons) > 0 {

@@ -619,9 +619,25 @@ function card(a){
   <div class="uid">${esc(a.uid||"")} · ${esc(a.name||"")}</div>
   ${progressHTML(cr)}
   ${expiryHTML(cr)}
+  ${checkinHTML(a)}
   ${a.error?`<div class="row"><span class="k">错误</span><span class="v err">${esc(a.error)}</span></div>`:""}
   <div class="actions">${selectBtn}${refreshBtn}${actionHTML}${toggleBtn}</div>
   </div>`;
+}
+// checkinHTML renders today's check-in state from the checkin snapshot. The
+// action button already conveys signed/unsigned, but not the streak or what the
+// last grant was worth — both come from fields the backend has always sent.
+function checkinHTML(a){
+  const ci=a.checkin||{};
+  if((a.region||"cn")==="global") return "";
+  if(ci.active===false && !ci.today_checked_in) return "";
+  const parts=[];
+  parts.push(ci.today_checked_in?'<span class="status-ok">今日已签到</span>':'<span class="status-err">今日未签到</span>');
+  if(ci.streak_days) parts.push('连续 '+esc(String(ci.streak_days))+' 天');
+  if(ci.today_credit) parts.push('今日 +'+esc(String(ci.today_credit)));
+  else if(ci.daily_credit) parts.push('每日 '+esc(String(ci.daily_credit)));
+  if(ci.week_checkin_days) parts.push('本周 '+esc(String(ci.week_checkin_days))+' 天');
+  return `<div class="row"><span class="k">签到</span><span class="v">${parts.join(' · ')}</span></div>`;
 }
 let currentFilter="all";
 let accountSearch="";
@@ -647,6 +663,10 @@ function lazyLoadCredits(accounts){
           if(acct.trial_claimed!=null) a.trial_claimed=acct.trial_claimed;
           if(acct.plan) a.plan=acct.plan;
         }
+        // Check-in state arrives with the same response; without this the card
+        // always renders "未签到" because /accounts is a light load that never
+        // populates it.
+        if(acct&&acct.checkin) a.checkin=acct.checkin;
         if(acct&&acct.error){ a.error=acct.error; }
         updateOneCard(a);
       })
@@ -658,6 +678,7 @@ function lazyLoadCredits(accounts){
               const acct=(d.accounts||[])[0]||d;
               if(acct&&acct.credits){ a.credits=acct.credits; a.exhausted=acct.exhausted; }
               if(acct&&acct.plan) a.plan=acct.plan;
+              if(acct&&acct.checkin) a.checkin=acct.checkin;
               if(d.error||acct&&acct.error) a.error=d.error||acct.error;
               updateOneCard(a);
             })
@@ -1296,12 +1317,18 @@ async function loadOverview(btn){
   if(btn) busy(btn,true);
   try{
     const d=await api("/overview");
+    // 今日签到 shows signed/known, or "-" until a snapshot exists: /overview is
+    // built from the light-load dashboard, so a fresh process has no check-in
+    // data and a bare 0 would read as "nobody signed in".
+    const ciTile=d.checkin_known?{k:"今日签到",v:d.checked_in+"/"+d.checkin_known,c:(d.checked_in===d.checkin_known?"ok":"warn")}
+                              :{k:"今日签到",v:"-",c:""};
     const tiles=[
       {k:"账号总数",v:d.total,c:""},
       {k:"健康",v:d.healthy,c:"ok"},
       {k:"冷却",v:d.cooling,c:d.cooling?"warn":""},
       {k:"禁用",v:d.disabled,c:d.disabled?"err":""},
       {k:"耗尽",v:d.exhausted,c:d.exhausted?"err":""},
+      ciTile,
       {k:"可用积分",v:(d.credits&&d.credits.remain!=null)?d.credits.remain:"-",c:""},
       {k:"额度池",v:(d.credits&&d.credits.size!=null)?d.credits.size:"-",c:""},
     ];
@@ -1578,21 +1605,33 @@ async function loadTaskLog(btn){
     const ok=taskLogCache.filter(t=>t.ok).length;
     const byTask={};
     taskLogCache.forEach(t=>{byTask[t.task]=(byTask[t.task]||0)+1});
+    const totalCredit=taskLogCache.reduce((s,t)=>s+(t.credit||0),0);
     document.getElementById("tasksTiles").innerHTML=
       '<div class="ov-tile"><div class="k">记录数</div><div class="v">'+esc(String(taskLogCache.length))+'</div></div>'+
       '<div class="ov-tile"><div class="k">成功</div><div class="v ok">'+esc(String(ok))+'</div></div>'+
       '<div class="ov-tile"><div class="k">失败</div><div class="v '+(taskLogCache.length-ok?"err":"")+'">'+esc(String(taskLogCache.length-ok))+'</div></div>'+
+      '<div class="ov-tile"><div class="k">累计积分</div><div class="v '+(totalCredit>0?"ok":"")+'">'+(totalCredit>0?"+"+esc(String(totalCredit)):"-")+'</div></div>'+
       '<div class="ov-tile"><div class="k">类型数</div><div class="v">'+esc(String(Object.keys(byTask).length))+'</div></div>';
     document.getElementById("tasksMeta").textContent="累计 "+(d.tasks||[]).length+" 条";
     document.getElementById("tasksTable").innerHTML=taskLogCache.length?
-      ('<table class="log-table"><thead><tr><th>时间</th><th>任务</th><th>账号</th><th class="num">结果</th><th>说明</th></tr></thead><tbody>'+
-      taskLogCache.map(t=>'<tr><td>'+esc(fmtTime(t.time))+'</td><td>'+esc(t.task||"-")+'</td>'+
+      ('<table class="log-table"><thead><tr><th>时间</th><th>任务</th><th>账号</th><th class="num">结果</th><th class="num">积分</th><th>说明</th></tr></thead><tbody>'+
+      taskLogCache.map(t=>'<tr><td>'+esc(fmtTime(t.time))+'</td><td>'+esc(taskLabel(t.task))+'</td>'+
       '<td>'+esc(t.account||"-")+'</td>'+
       '<td class="num '+(t.ok?"status-ok":"status-err")+'">'+esc(t.ok?"成功":"失败")+'</td>'+
+      '<td class="num '+((t.credit||0)>0?"status-ok":"")+'">'+((t.credit||0)>0?"+"+esc(String(t.credit)):"-")+'</td>'+
       '<td>'+esc(t.message||"")+'</td></tr>').join("")+'</tbody></table>'):"暂无记录";
   }catch(e){toast("任务加载失败","err",e.message||String(e))}
   finally{ if(btn) busy(btn,false); }
 }
+// taskLabel renders a task key in Chinese for the task log. Unknown keys fall
+// back to the raw key so a new task type is still visible before it is labelled.
+const TASK_LABELS={
+  "checkin":"每日签到","keepalive":"Token 保活","activity":"活跃地图",
+  "travel":"猫猫旅行","travel-adopt":"领养猫猫","growth-redeem":"连登奖励",
+  "growth-gift":"礼物包","growth-compensation":"补偿包","growth-makeup":"补签卡",
+  "growth-lottery":"抽奖","account-enabled":"账号启用","account-disabled":"账号停用",
+};
+function taskLabel(t){return TASK_LABELS[t]||t||"-"}
 /* Model center (GET /models) — full upstream catalog. */
 let modelCenterCache=[];
 async function loadModelCenter(btn){

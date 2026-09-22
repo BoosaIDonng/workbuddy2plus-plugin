@@ -216,7 +216,7 @@ func claimGrowthRewards(acct *wauth.Auth) {
 	case err == nil:
 		log.Printf("activity %s: redeem tier=%s ok (+%d credit, +%d energy, +%d chances)",
 			accountLabel(acct), tier, res.CreditGranted, res.EnergyGranted, res.ChancesGranted)
-		recordTask("growth-redeem", acct.Nickname, true,
+		recordTaskCredit("growth-redeem", acct.Nickname, true, int64(res.CreditGranted),
 			fmt.Sprintf("tier=%s +%d credit", tier, res.CreditGranted))
 	case wupstream.IsRedeemAlreadyClaimed(err) || wupstream.IsRedeemNotEnoughDays(err):
 		log.Printf("activity %s: redeem tier=%s skip (already claimed or days not enough)", accountLabel(acct), tier)
@@ -266,11 +266,11 @@ func growthEligibleTier(days int, rs *wupstream.GrowthRedemptionStatus) string {
 func claimGiftPacks(acct *wauth.Auth) {
 	if credits, err := wbClient.ClaimGift(acct); err == nil && credits > 0 {
 		log.Printf("activity %s: gift +%d credit", accountLabel(acct), credits)
-		recordTask("growth-gift", acct.Nickname, true, fmt.Sprintf("+%d credit", credits))
+		recordTaskCredit("growth-gift", acct.Nickname, true, credits, fmt.Sprintf("+%d credit", credits))
 	}
 	if credits, err := wbClient.ClaimCompensation(acct); err == nil && credits > 0 {
 		log.Printf("activity %s: compensation +%d credit", accountLabel(acct), credits)
-		recordTask("growth-compensation", acct.Nickname, true, fmt.Sprintf("+%d credit", credits))
+		recordTaskCredit("growth-compensation", acct.Nickname, true, credits, fmt.Sprintf("+%d credit", credits))
 	}
 }
 
@@ -324,7 +324,7 @@ func claimGrowthLottery(acct *wauth.Auth) {
 	}
 	if won > 0 {
 		log.Printf("activity %s: lottery +%d credit", accountLabel(acct), won)
-		recordTask("growth-lottery", acct.Nickname, true, fmt.Sprintf("+%d credit", won))
+		recordTaskCredit("growth-lottery", acct.Nickname, true, int64(won), fmt.Sprintf("+%d credit", won))
 	}
 }
 

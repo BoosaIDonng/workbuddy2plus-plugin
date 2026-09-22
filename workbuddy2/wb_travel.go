@@ -9,6 +9,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -26,6 +27,10 @@ const (
 	travelLocationID = 4
 	// travelAccountDelay spaces accounts to stay clear of upstream rate limits.
 	travelAccountDelay = 800 * time.Millisecond
+	// adoptCredit is the fixed first-adoption grant. BuddyFirst returns only an
+	// error, so the amount cannot be read from the response — it is the
+	// upstream's constant, confirmed against a live adoption.
+	adoptCredit = 300
 )
 
 // adoptionAttempted records accounts whose adoption was rejected because the
@@ -164,7 +169,7 @@ func travelClaim(acct *wauth.Auth, ts *wupstream.TravelState) {
 		return
 	}
 	log.Printf("travel %s: claim ok record=%d reward=%d", label, ts.RecordID, reward)
-	recordTask("travel", acct.Nickname, true, "claimed "+itoa(reward)+" credit")
+	recordTaskCredit("travel", acct.Nickname, true, reward, "claimed "+itoa(reward)+" credit")
 }
 
 // adoptBuddy adopts a buddy: agree to the terms (idempotent) then first-adopt.
@@ -185,8 +190,9 @@ func adoptBuddy(acct *wauth.Auth) {
 	err := wbClient.BuddyFirst(acct)
 	switch {
 	case err == nil:
-		log.Printf("travel %s: adopt ok (+300 credits)", label)
-		recordTask("travel-adopt", acct.Nickname, true, "+300 credit")
+		log.Printf("travel %s: adopt ok (+%d credits)", label, adoptCredit)
+		recordTaskCredit("travel-adopt", acct.Nickname, true, adoptCredit,
+			fmt.Sprintf("+%d credit", adoptCredit))
 	case wupstream.IsBuddyTaskIncomplete(err):
 		log.Printf("travel %s: adopt skipped (conversation threshold not reached, retry after the activity task)", label)
 	default:

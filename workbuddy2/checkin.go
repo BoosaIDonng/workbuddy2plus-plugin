@@ -313,7 +313,10 @@ func handleManualCheckinWithCallback(req pluginapi.ManagementRequest, callbackID
 		}
 		nick, _ := out["nickname"].(string)
 		msg, _ := out["message"].(string)
-		recordTask("checkin", nick, out["success"] == true, msg)
+		// The grant is structured, not part of the message: the same fields the
+		// panel's success toast already reads (credit, then daily_credit).
+		credit := jsonI64(out, "credit", "daily_credit")
+		recordTaskCredit("checkin", nick, out["success"] == true, credit, msg)
 	}
 	return map[string]any{
 		"results": results,

@@ -223,7 +223,21 @@ func handleCreditsQueryWithCallback(req pluginapi.ManagementRequest, callbackID 
 					"auth_index": authIndex, "error": "load auth: " + err.Error(),
 				}}}
 			}
-			cr, err := fetchUserResourceWithCallback(sa, callbackID)
+			// Credits and check-in are independent upstream calls and the card
+			// needs both, so fetch them together — serially this branch would
+			// pay two round-trips. Check-in is best-effort: a failure leaves the
+			// card's check-in state untouched rather than failing the request.
+			var (
+				cr    *creditsSummary
+				crErr error
+				ci    *checkinSummary
+			)
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go func() { defer wg.Done(); cr, crErr = fetchUserResourceWithCallback(sa, callbackID) }()
+			go func() { defer wg.Done(); ci, _ = fetchCheckinStatusWithCallback(sa, callbackID) }()
+			wg.Wait()
+			err = crErr
 			acct := map[string]any{
 				"auth_index": authIndex,
 				"nickname":   sa.Account.Nickname,
@@ -254,9 +268,13 @@ func handleCreditsQueryWithCallback(req pluginapi.ManagementRequest, callbackID 
 				if v, ok := accountCache.Load(f.ID); ok {
 					prev, _ = v.(*accountCacheEntry)
 				}
-				var ci *checkinSummary
-				if prev != nil {
+				// Keep the previous snapshot when this fetch failed, so a
+				// transient upstream error does not blank the card's check-in row.
+				if ci == nil && prev != nil {
 					ci = prev.checkin
+				}
+				if ci != nil {
+					acct["checkin"] = ci
 				}
 				plan, _ := acct["plan"].(string)
 				// Credit ledger: compare this real query against the previous

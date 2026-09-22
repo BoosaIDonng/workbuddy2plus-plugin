@@ -49,6 +49,10 @@ type taskRow struct {
 	Task    string `json:"task"` // checkin / keepalive / lifecycle
 	Account string `json:"account,omitempty"`
 	OK      bool   `json:"ok"`
+	// Credit is the amount this run granted, when the task grants credits at
+	// all. Structured rather than parsed out of Message so the panel can total
+	// it without guessing at free text.
+	Credit  int64  `json:"credit,omitempty"`
 	Message string `json:"message,omitempty"`
 }
 
@@ -173,13 +177,20 @@ func recordLedger(uid, nickname string, before, after int64, source string) {
 	})
 }
 
-// recordTask appends one task execution outcome.
+// recordTask appends one task execution outcome that grants no credits.
 func recordTask(task, account string, ok bool, message string) {
+	recordTaskCredit(task, account, ok, 0, message)
+}
+
+// recordTaskCredit appends one task execution outcome, recording the credits it
+// granted (0 for tasks that grant none, e.g. keepalive).
+func recordTaskCredit(task, account string, ok bool, credit int64, message string) {
 	panelData.append(streamTasks, taskRow{
 		Time:    time.Now().Format(time.RFC3339),
 		Task:    task,
 		Account: account,
 		OK:      ok,
+		Credit:  credit,
 		Message: truncateRedacted(strings.ReplaceAll(message, "\n", " "), 160),
 	})
 }
