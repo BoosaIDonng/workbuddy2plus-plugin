@@ -20,22 +20,23 @@ import (
 
 // wbAccount is one row of the dashboard.
 type wbAccount struct {
-	AuthIndex    string          `json:"auth_index"`
-	AuthID       string          `json:"auth_id,omitempty"`
-	Name         string          `json:"name"`
-	Label        string          `json:"label"`
-	Nickname     string          `json:"nickname"`
-	UID          string          `json:"uid"`
-	Region       string          `json:"region"` // "cn" or "global"
-	Plan         string          `json:"plan"`
-	Status       string          `json:"status"`
-	Disabled     bool            `json:"disabled"`
-	Exhausted    bool            `json:"exhausted"`
-	Selected     bool            `json:"selected"` // panel active routing card
-	Credits      *creditsSummary `json:"credits,omitempty"`
-	Checkin      *checkinSummary `json:"checkin,omitempty"`
-	TrialClaimed bool            `json:"trial_claimed,omitempty"` // Global: expert trial already claimed
-	Error        string          `json:"error,omitempty"`
+	AuthIndex      string          `json:"auth_index"`
+	AuthID         string          `json:"auth_id,omitempty"`
+	Name           string          `json:"name"`
+	Label          string          `json:"label"`
+	Nickname       string          `json:"nickname"`
+	UID            string          `json:"uid"`
+	Region         string          `json:"region"` // "cn" or "global"
+	Plan           string          `json:"plan"`
+	Status         string          `json:"status"`
+	Disabled       bool            `json:"disabled"`
+	Exhausted      bool            `json:"exhausted"`
+	Selected       bool            `json:"selected"` // panel active routing card
+	ManualDisabled bool            `json:"manual_disabled,omitempty"`
+	Credits        *creditsSummary `json:"credits,omitempty"`
+	Checkin        *checkinSummary `json:"checkin,omitempty"`
+	TrialClaimed   bool            `json:"trial_claimed,omitempty"` // Global: expert trial already claimed
+	Error          string          `json:"error,omitempty"`
 }
 
 type modelStatus struct {
@@ -192,6 +193,8 @@ func buildDashboardExWithCallback(force, fetchCredits bool, callbackID string) m
 			acct.Nickname = sa.Account.Nickname
 			acct.UID = sa.Account.UID
 			acct.Region = accountRegion(sa)
+			physicalDisabled := acct.Disabled
+			acct.ManualDisabled = manualDisabledForAuthUID(acct.UID)
 			if fetchCredits {
 				plan, ci, cr, errs := cachedAccountDetailsWithCallback(f.ID, sa, force, callbackID)
 				acct.Plan = plan
@@ -202,7 +205,7 @@ func buildDashboardExWithCallback(force, fetchCredits bool, callbackID string) m
 					acct.TrialClaimed = hasTrialPack(cr)
 				}
 				// Keep note in sync (throttled); do not block dashboard on save errors.
-				_ = syncAuthNote(f.AuthIndex, f.ID, sa, cr, acct.Disabled)
+				_ = syncAuthNote(f.AuthIndex, f.ID, sa, cr, physicalDisabled)
 				acct.Error = strings.Join(errs, "; ")
 			} else {
 				// Light load: use cached values if available, but don't fetch upstream.
@@ -218,6 +221,7 @@ func buildDashboardExWithCallback(force, fetchCredits bool, callbackID string) m
 					}
 				}
 			}
+			acct.Disabled = physicalDisabled || acct.ManualDisabled
 			out[i] = acct
 		}(i, f)
 	}
@@ -244,7 +248,7 @@ func buildDashboardExWithCallback(force, fetchCredits bool, callbackID string) m
 					continue
 				}
 				if d, ok := disabledBy[a.AuthIndex]; ok {
-					a.Disabled = d
+					a.Disabled = d || manualDisabledForAuthUID(a.UID)
 				}
 				// Credits may have been refreshed during reconcile — re-read cache.
 				if v, ok := accountCache.Load(a.AuthID); ok {

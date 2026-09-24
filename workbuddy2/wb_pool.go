@@ -13,6 +13,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +26,15 @@ var (
 	wbPool     *wpool.Pool
 	wbPoolOnce sync.Once
 )
+
+func manualDisabledForAuthUID(uid string) bool {
+	uid = strings.TrimSpace(uid)
+	if uid == "" {
+		return false
+	}
+	disabled, _, ok := poolInstance().ManualDisabledState(uid)
+	return ok && disabled
+}
 
 // poolInstance lazily builds the process-wide pool. State persists next to the
 // panel data so cooldowns survive a plugin reload.

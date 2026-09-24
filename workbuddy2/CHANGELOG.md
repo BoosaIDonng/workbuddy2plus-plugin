@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.8.2 - 2026-09-24
+
+### Account selection and disable-state correctness
+
+- Keep the panel-selected account sticky while loading another account's
+  credits; a read-only credit query no longer changes the active account.
+- Make manual account disabling a persisted account-pool state instead of
+  relying on unsupported metadata in the CPA credential JSON.
+- Expose manual-disable state consistently in the accounts panel, selection
+  endpoint, and credit-aware scheduler, while keeping CPA automatic disable
+  state independent.
+- Restore credential remarks from the actual combined account state so stale
+  manual-disable labels are not left behind.
+
 ## 2.8.1 - 2026-09-22
 
 ### Correctness and documentation

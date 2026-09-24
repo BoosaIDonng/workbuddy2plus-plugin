@@ -252,6 +252,9 @@ func syncAuthNote(authIndex, authID string, sa *storedAuth, cr *creditsSummary, 
 		return nil
 	}
 	note := displayNote(sa, cr, disabled)
+	if manualDisabledForAuthUID(sa.Account.UID) {
+		note = appendNote(note, "手动停用")
+	}
 	if lifecycleStateUnchanged(authID, disabled, note) {
 		return nil
 	}
@@ -267,6 +270,9 @@ func syncAuthNote(authIndex, authID string, sa *storedAuth, cr *creditsSummary, 
 		// re-read disabled from disk as source of truth
 		disabled = parseDisabledFromAuthJSON(phys.JSON)
 		note = displayNote(sa, cr, disabled)
+		if manualDisabledForAuthUID(sa.Account.UID) {
+			note = appendNote(note, "手动停用")
+		}
 	}
 	if lifecycleStateUnchanged(authID, disabled, note) {
 		return nil

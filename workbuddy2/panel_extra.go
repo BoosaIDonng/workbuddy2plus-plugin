@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	wauth "github.com/sliverkiss/workbuddy2plus-plugin/internal/auth"
 )
 
 // appendNote appends a short marker to a display note (bounded length).
@@ -140,14 +141,22 @@ func handleAccountToggle(req pluginapi.ManagementRequest) (int, any) {
 	if err != nil {
 		return http.StatusNotFound, map[string]any{"error": "account not found"}
 	}
-	// Manual state carries an explicit note so it is distinguishable from the
-	// automatic credit-driven disable in the auth file and the panel.
-	note := displayNote(sa, nil, *body.Disabled)
+	// CPA's host auth save persists the JSON file but does not promote the
+	// provider metadata's disabled bit into the host runtime state. Keep manual
+	// shelf state in the plugin pool and leave the host-owned disabled bit alone.
+	poolInstance().Add(&wauth.Auth{UID: sa.Account.UID, Domain: sa.Auth.Domain, Nickname: sa.Account.Nickname})
+	poolInstance().SetManualDisabled(sa.Account.UID, *body.Disabled, "by panel")
+	poolInstance().Flush()
+	physicalDisabled := false
+	if phys, physErr := hostAuthGetPhysical(idx); physErr == nil && phys != nil {
+		physicalDisabled = phys.Disabled
+	}
+	note := displayNote(sa, nil, physicalDisabled)
 	if *body.Disabled {
 		note = appendNote(note, "手动停用")
 	}
 	authID := authStateKey(entry)
-	if err := writeAuthDisabled(idx, authID, sa, *body.Disabled, note); err != nil {
+	if err := writeAuthDisabled(idx, authID, sa, physicalDisabled, note); err != nil {
 		return http.StatusBadGateway, map[string]any{"error": sanitizeUpstreamError(err)}
 	}
 	action := "enabled"

@@ -72,7 +72,7 @@ func handleSchedulerPick(raw []byte) ([]byte, error) {
 		if c.Provider != providerName {
 			continue
 		}
-		if candidateDisabled(c) {
+		if candidateDisabled(c) || manualDisabledForAuthUID(c.ID) {
 			continue
 		}
 		if !currentModelRuntime().snapshotForAuthID(c.ID).State.executable() {
@@ -82,6 +82,23 @@ func handleSchedulerPick(raw []byte) ([]byte, error) {
 	}
 	if len(wbCandidates) == 0 {
 		return okEnvelope(pluginapi.SchedulerPickResponse{Handled: false})
+	}
+	// A panel selection is an explicit operator choice. Keep routing on that
+	// account while it remains a live, non-exhausted candidate; use the weighted
+	// pool only when there is no prior selection to honor.
+	if getActiveAuthID() != "" {
+		preferred := make([]activeAuthCandidate, 0, len(wbCandidates))
+		for _, c := range wbCandidates {
+			_, exhausted := cachedCreditsScore(c.ID)
+			preferred = append(preferred, activeAuthCandidate{ID: c.ID, Exhausted: exhausted})
+		}
+		if picked := pickActiveAuth(preferred); picked != "" {
+			return okEnvelope(pluginapi.SchedulerPickResponse{AuthID: picked, Handled: true})
+		}
+	}
+	if len(wbCandidates) == 1 {
+		setActiveAuthID(wbCandidates[0].ID)
+		return okEnvelope(pluginapi.SchedulerPickResponse{AuthID: wbCandidates[0].ID, Handled: true})
 	}
 
 	// Build thin view for the pool: IDs are auth UIDs (toAuthDataOpts sets

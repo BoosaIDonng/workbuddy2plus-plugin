@@ -174,12 +174,12 @@ func handleSelectAuth(req pluginapi.ManagementRequest) map[string]any {
 		if f.AuthIndex != authIndex {
 			continue
 		}
-		if f.Disabled {
-			return map[string]any{"error": "账号已禁用，无法选中", "auth_index": authIndex}
-		}
 		sa, err := hostAuthGet(f.AuthIndex)
 		if err != nil {
 			return map[string]any{"error": err.Error(), "auth_index": authIndex}
+		}
+		if f.Disabled || manualDisabledForAuthUID(sa.Account.UID) {
+			return map[string]any{"error": "账号已禁用，无法选中", "auth_index": authIndex}
 		}
 		setActiveAuthID(f.ID)
 		return map[string]any{
