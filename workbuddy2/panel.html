@@ -156,6 +156,12 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .expiry-ok{color:var(--ok)}.expiry-warn{color:var(--warn)}.expiry-err{color:var(--err)}
 .expiry-mut{color:var(--mut)}
 .expiry-block{margin-top:4px}
+.expiry-list{display:flex;flex-direction:column}
+.expiry-extra{margin-top:2px}
+.expiry-extra summary{cursor:pointer;color:var(--mut);font-size:12px;padding:6px 0;list-style:none;user-select:none}
+.expiry-extra summary::-webkit-details-marker{display:none}
+.expiry-extra summary::before{content:"▸";display:inline-block;margin-right:6px;transition:transform .15s ease}
+.expiry-extra[open] summary::before{transform:rotate(90deg)}
 .tabs{display:flex;gap:6px;margin:14px 0 4px;flex-wrap:wrap}
 .tab-btn{background:var(--surface);border:1px solid var(--border);color:var(--mut);border-radius:10px;padding:7px 16px;font-size:13px;cursor:pointer;font-weight:600}
 .tab-btn.active{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
@@ -1679,7 +1685,7 @@ function renderModelCenter(){
 function expiryHTML(cr){
   if(!cr||!(cr.packages||[]).length) return "";
   const now=Date.now();
-  const rows=cr.packages.map(p=>{
+  const items=cr.packages.map((p,index)=>{
     const end=Date.parse(String(p.cycle_end||"").replace(" ","T"));
     let label="-", cls="expiry-mut", days=null;
     if(!isNaN(end)){
@@ -1689,11 +1695,29 @@ function expiryHTML(cr){
       else if(days<=7){label=days+" 天";cls="expiry-warn"}
       else {label=days+" 天";cls="expiry-ok"}
     }
+    return {p,index,days,end,label,cls};
+  }).sort((a,b)=>{
+    if(a.days===null&&b.days!==null) return 1;
+    if(a.days!==null&&b.days===null) return -1;
+    if(a.days!==null&&b.days!==null&&a.end!==b.end) return a.end-b.end;
+    return a.index-b.index;
+  });
+  const active=items.filter(item=>item.days===null||item.days>=0);
+  if(!active.length) return "";
+  const urgent=active.filter(item=>item.days!==null&&item.days<=7);
+  const visible=urgent.length?urgent:active.slice(0,3);
+  const visibleIndexes=new Set(visible.map(item=>item.index));
+  const extra=active.filter(item=>!visibleIndexes.has(item.index));
+  const row=item=>{
+    const p=item.p;
     return '<div class="recent-row"><span>'+esc(p.name||"套餐")+'</span>'+
-      '<span class="'+cls+'">剩 '+esc(label)+'</span>'+
+      '<span class="'+item.cls+'">剩 '+esc(item.label)+'</span>'+
       '<span class="expiry-mut">可用 '+esc(String(p.remain))+' / '+esc(String(p.size))+'</span></div>';
-  }).join("");
-  return '<div class="expiry-block"><div class="hint" style="margin:6px 0 2px">积分到期</div>'+rows+'</div>';
+  };
+  const extraHTML=extra.length
+    ? '<details class="expiry-extra"><summary>其余 '+extra.length+' 个套餐</summary><div class="expiry-list">'+extra.map(row).join("")+'</div></details>'
+    : "";
+  return '<div class="expiry-block"><div class="hint" style="margin:6px 0 2px">积分到期（7天内优先）</div><div class="expiry-list">'+visible.map(row).join("")+'</div>'+extraHTML+'</div>';
 }
 /* Manual account disable / re-enable (A6). */
 async function toggleAccount(authIndex, nickname, disabled, btn){

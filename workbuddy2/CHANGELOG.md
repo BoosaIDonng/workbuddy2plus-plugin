@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.8.3 - 2026-09-25
+
+### Account expiry display
+
+- Show packages expiring within seven days directly in the account card.
+- Hide expired packages from the account card.
+- Collapse other active packages to keep account details compact.
+- Show the three soonest active packages when none expire within seven days.
+
 ## 2.8.2 - 2026-09-24
 
 ### Account selection and disable-state correctness
