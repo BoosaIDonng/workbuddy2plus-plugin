@@ -1,5 +1,5 @@
 // panel_observability_test.go locks the observability UI added in 2.4.x:
-// the new tabs, the trend chart, the credit-expiry countdown and the account
+// the new tabs, the credit-expiry countdown and the account
 // shelf/restore button. These are DOM/JS contracts — if a refactor removes a
 // hook the panel silently loses a feature, so assert on the markup directly.
 package main
@@ -31,12 +31,6 @@ func TestPanelObservabilityContracts(t *testing.T) {
 		{name: "models loader", want: `api("/models")`},
 		{name: "account toggle call", want: `api("/account/toggle"`},
 
-		// Trend chart (dependency-free SVG, mirroring the GUI's TrendChart).
-		{name: "trend renderer", want: `function renderTrend()`},
-		{name: "trend svg root", want: `class="trend-svg"`},
-		{name: "trend metric select", want: `id="trendMetric"`},
-		{name: "nice max axis", want: `function niceMax(v)`},
-
 		// Custom usage range (B3).
 		{name: "range mode select", want: `id="usageRangeMode"`},
 		{name: "custom from date", want: `id="usageFrom"`},
@@ -59,6 +53,15 @@ func TestPanelObservabilityContracts(t *testing.T) {
 	for _, req := range required {
 		if !strings.Contains(html, req.want) {
 			t.Errorf("panel missing %s contract: %q", req.name, req.want)
+		}
+	}
+}
+
+func TestPanelUsageTrendChartRemoved(t *testing.T) {
+	html := strings.ToLower(string(panelHTML))
+	for _, removed := range []string{"趋势", "trendmetric", "rendertrend", "trend-svg", "trend-bar"} {
+		if strings.Contains(html, removed) {
+			t.Errorf("usage panel still contains removed trend chart marker %q", removed)
 		}
 	}
 }

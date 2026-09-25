@@ -137,15 +137,6 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .recent-row{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
 .recent-row:last-child{border-bottom:none}
 .recent-time{color:var(--mut);font-variant-numeric:tabular-nums}
-/* trend chart (dependency-free SVG) */
-.trend-wrap{position:relative}
-.trend-svg{width:100%;height:180px;display:block;overflow:visible}
-.trend-grid{stroke:var(--border);stroke-width:1}
-.trend-area{fill:var(--acc-ring);opacity:.35}
-.trend-line{fill:none;stroke:var(--acc);stroke-width:2;stroke-linejoin:round}
-.trend-dot{fill:var(--acc)}
-.trend-axis{fill:var(--mut);font-size:10px}
-.trend-bar{fill:var(--acc)}
 /* log / task / model tables */
 .log-table{width:100%;border-collapse:collapse;font-size:12px}
 .log-table th{text-align:left;color:var(--mut);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -271,16 +262,6 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
       <span class="toggle" id="usageMeta"></span>
     </div>
     <div class="ov-grid" id="usageTiles"></div>
-    <div class="card set-card">
-      <h3>趋势</h3>
-      <div class="action-row" style="margin:0 0 8px">
-        <select id="trendMetric" class="field-input" style="max-width:180px" aria-label="趋势指标" onchange="renderTrend()">
-          <option value="credit" selected>计费（积分）</option>
-          <option value="requests">请求数</option>
-        </select>
-      </div>
-      <div id="usageTrend" class="hint">加载中…</div>
-    </div>
     <div class="card set-card"><h3>模型积分分布</h3><div id="usageByModel" class="hint">加载中…</div></div>
     <div class="card set-card"><h3>客户端分布</h3><div id="usageByClient" class="hint">加载中…</div></div>
     <div class="card set-card"><h3>积分获得流水</h3><div id="usageLedger" class="hint">加载中…</div></div>
@@ -1439,18 +1420,17 @@ function usageBarRows(rows, valFmt){
 }
 async function loadUsage(btn){
   if(btn) busy(btn,true);
+  loadLedger();
   try{
-    const q=usageRangeQuery();
+    const q=usageRangeQuery()+(btn?"&refresh=1":"");
     const d=await api("/usage?"+q);
     if(d.error){toast("用量加载失败","err",d.error);return}
-    usageCache=d;
     document.getElementById("usageMeta").textContent=d.accounts+" 个账号 · 共 "+d.total_count+" 次请求";
     document.getElementById("usageTiles").innerHTML=
       '<div class="ov-tile"><div class="k">积分消耗</div><div class="v">'+esc((d.total_credit||0).toFixed(2))+'</div></div>'+
       '<div class="ov-tile"><div class="k">请求数</div><div class="v">'+esc(String(d.total_count||0))+'</div></div>'+
       '<div class="ov-tile"><div class="k">模型数</div><div class="v">'+esc(String((d.by_model||[]).length))+'</div></div>'+
       '<div class="ov-tile"><div class="k">统计天数</div><div class="v">'+esc(String((d.by_day||[]).length))+'</div></div>';
-    renderTrend();
     const models=(d.by_model||[]).slice(0,10).map(m=>({label:m.model||"unknown",credit:m.credit,count:m.requests}));
     document.getElementById("usageByModel").innerHTML=models.length?
       usageBarRows(models,r=>r.credit.toFixed(2)+' 积分 · '+r.count+' 次'):"无数据";
@@ -1461,7 +1441,6 @@ async function loadUsage(btn){
   }catch(e){
     toast("用量加载失败","err",e.message||String(e));
   }finally{ if(btn) busy(btn,false); }
-  loadLedger();
 }
 /* Range: preset days, or a custom from/to date pair. */
 function onUsageRangeChange(){
@@ -1488,57 +1467,6 @@ function usageRangeQuery(){
     }
   }
   return "days="+encodeURIComponent(document.getElementById("usageDays").value||"7");
-}
-/* Trend chart: dependency-free SVG, mirroring workbuddy2api-gui's TrendChart
-   (counts render as bars, the credit series as a line with area fill). */
-let usageCache=null;
-const TREND_PAD={l:44,r:10,t:12,b:22};
-function niceMax(v){
-  if(v<=0) return 1;
-  const exp=Math.floor(Math.log10(v)), base=Math.pow(10,exp), n=v/base;
-  const step=n<=1?1:(n<=2?2:(n<=5?5:10));
-  return step*base;
-}
-function renderTrend(){
-  const el=document.getElementById("usageTrend");
-  const days=(usageCache&&usageCache.by_day)||[];
-  if(!days.length){el.innerHTML="无数据";return}
-  const metric=document.getElementById("trendMetric").value;
-  const pts=days.map(d=>({label:d.day,value:metric==="credit"?(d.credit||0):(d.count||0)}));
-  const W=600,H=180;
-  const iw=W-TREND_PAD.l-TREND_PAD.r, ih=H-TREND_PAD.t-TREND_PAD.b;
-  const max=niceMax(Math.max.apply(null,pts.map(p=>p.value)));
-  const isLine=metric==="credit";
-  const xs=i=>TREND_PAD.l+(pts.length===1?iw/2:i*iw/(pts.length-1));
-  const yv=v=>TREND_PAD.t+ih-(v/max)*ih;
-  let svg='<svg class="trend-svg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="趋势图">';
-  // horizontal grid + y labels
-  for(let g=0;g<=4;g++){
-    const v=max*g/4, y=yv(v);
-    svg+='<line class="trend-grid" x1="'+TREND_PAD.l+'" y1="'+y+'" x2="'+(W-TREND_PAD.r)+'" y2="'+y+'"/>';
-    svg+='<text class="trend-axis" x="'+(TREND_PAD.l-6)+'" y="'+(y+3)+'" text-anchor="end">'+esc(fmtAxis(v))+'</text>';
-  }
-  if(isLine){
-    let d="",area="";
-    pts.forEach((p,i)=>{d+=(i?"L":"M")+xs(i).toFixed(1)+" "+yv(p.value).toFixed(1)+" ";});
-    area=d+"L"+xs(pts.length-1).toFixed(1)+" "+(TREND_PAD.t+ih)+" L"+xs(0).toFixed(1)+" "+(TREND_PAD.t+ih)+" Z";
-    svg+='<path class="trend-area" d="'+area+'"/>';
-    svg+='<path class="trend-line" d="'+d+'"/>';
-    pts.forEach((p,i)=>{svg+='<circle class="trend-dot" cx="'+xs(i).toFixed(1)+'" cy="'+yv(p.value).toFixed(1)+'" r="2.5"><title>'+esc(p.label)+': '+esc(p.value.toFixed(2))+'</title></circle>';});
-  }else{
-    const bw=Math.max(2,Math.min(24,iw/pts.length*0.6));
-    pts.forEach((p,i)=>{
-      const y=yv(p.value), h=Math.max(1,TREND_PAD.t+ih-y);
-      svg+='<rect class="trend-bar" x="'+(xs(i)-bw/2).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'"><title>'+esc(p.label)+': '+esc(String(p.value))+'</title></rect>';
-    });
-  }
-  // x labels (thin to <=7)
-  const step=Math.max(1,Math.ceil(pts.length/7));
-  pts.forEach((p,i)=>{if(i%step===0||i===pts.length-1){
-    svg+='<text class="trend-axis" x="'+xs(i).toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle">'+esc(p.label.slice(5))+'</text>';
-  }});
-  svg+='</svg>';
-  el.innerHTML=svg;
 }
 function fmtAxis(v){
   if(v>=1000000) return (v/1000000).toFixed(1)+"M";

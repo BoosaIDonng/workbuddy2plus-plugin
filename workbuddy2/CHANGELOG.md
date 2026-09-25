@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Usage panel performance
+
+- Fetch usage pages concurrently per account instead of waiting on every page serially.
+- Add bounded account concurrency, a 30-second response cache, in-flight request sharing,
+  and a 30-second per-account upstream timeout.
+- Load the credit ledger in parallel with usage data and remove the usage trend chart.
+
 ## 2.8.3 - 2026-09-25
 
 ### Account expiry display

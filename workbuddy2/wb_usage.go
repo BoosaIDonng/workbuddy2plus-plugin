@@ -7,6 +7,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -27,8 +29,11 @@ const (
 	usageMaxDays     = 31
 	// Mirror workbuddy2api's page cap: beyond this the bill is incomplete and
 	// we surface an error instead of silently under-reporting credits.
-	usageMaxPages = 100
-	usagePageSize = 100
+	usageMaxPages           = 100
+	usagePageSize           = 100
+	usageAccountConcurrency = 4
+	usagePageConcurrency    = 4
+	usageFetchTimeout       = 30 * time.Second
 )
 
 // usageRecord is one official billing row.
@@ -57,12 +62,66 @@ func parseUsageTime(raw json.RawMessage) int64 {
 	return 0
 }
 
+func fetchUsagePageContext(ctx context.Context, c *wupstream.Client, a *wauth.Auth, endpoint string, start, end time.Time, pageNum int) ([]usageRecord, int, error) {
+	const layout = "2006-01-02 15:04:05"
+	body, err := json.Marshal(map[string]any{
+		"startTime": start.Format(layout),
+		"endTime":   end.Format(layout),
+		"pageNum":   pageNum,
+		"pageSize":  usagePageSize,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, 0, err
+	}
+	req = req.WithContext(ctx)
+	c.BillingHeaders(req, a)
+	origin := "https://" + req.URL.Host
+	req.Header.Set("Origin", origin)
+	req.Header.Set("Referer", origin+"/profile/plans-usage")
+	data, err := c.DoJSON(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	var resp struct {
+		Total int `json:"total"`
+		Rows  []struct {
+			RequestID    string          `json:"requestId"`
+			RequestTime  json.RawMessage `json:"requestTime"`
+			Credit       float64         `json:"credit"`
+			Model        string          `json:"model"`
+			Client       string          `json:"client"`
+			AgentPurpose string          `json:"agentPurpose"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, 0, fmt.Errorf("%s parse: %w", req.URL.Host+req.URL.Path, err)
+	}
+	records := make([]usageRecord, 0, len(resp.Rows))
+	for _, row := range resp.Rows {
+		records = append(records, usageRecord{
+			RequestID:   row.RequestID,
+			RequestTime: parseUsageTime(row.RequestTime),
+			Credit:      row.Credit,
+			Model:       row.Model,
+			Client:      row.Client,
+			Agent:       row.AgentPurpose,
+		})
+	}
+	return records, resp.Total, nil
+}
+
 // fetchUsageRecords pulls [start,end] billing rows for one account. Candidate
 // URLs mirror workbuddy2api: billing base with and without /v2, then the
 // workbuddy.cn domain; the first candidate returning code==0 wins. Live
 // traffic shifts pagination boundaries, so pages are re-read via total and
 // rows deduped by requestId (strict total validation always fails here).
 func fetchUsageRecords(c *wupstream.Client, a *wauth.Auth, start, end time.Time) ([]usageRecord, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), usageFetchTimeout)
+	defer cancel()
 	base := c.BillingBaseFor(a)
 	candidates := []string{
 		base + "/billing/meter/get-user-request-usage",
@@ -70,81 +129,64 @@ func fetchUsageRecords(c *wupstream.Client, a *wauth.Auth, start, end time.Time)
 		"https://www.workbuddy.cn/billing/meter/get-user-request-usage",
 		"https://www.workbuddy.cn/v2/billing/meter/get-user-request-usage",
 	}
-	const layout = "2006-01-02 15:04:05"
-	var records []usageRecord
 	var lastErr error
-	for _, url := range candidates {
-		records = records[:0]
-		seen := map[string]bool{}
-		ok := true
-		fetched := 0
-		total := 0
-		for pageNum := 1; pageNum <= usageMaxPages; pageNum++ {
-			body, _ := json.Marshal(map[string]any{
-				"startTime": start.Format(layout),
-				"endTime":   end.Format(layout),
-				"pageNum":   pageNum,
-				"pageSize":  usagePageSize,
-			})
-			req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(body)))
-			if err != nil {
-				return nil, err
-			}
-			c.BillingHeaders(req, a)
-			origin := "https://" + req.URL.Host
-			req.Header.Set("Origin", origin)
-			req.Header.Set("Referer", origin+"/profile/plans-usage")
-			data, err := c.DoJSON(req)
-			if err != nil {
-				ok = false
-				lastErr = fmt.Errorf("%s: %w", req.URL.Host+req.URL.Path, err)
-				break
-			}
-			var resp struct {
-				Total int `json:"total"`
-				Rows  []struct {
-					RequestID    string          `json:"requestId"`
-					RequestTime  json.RawMessage `json:"requestTime"`
-					Credit       float64         `json:"credit"`
-					Model        string          `json:"model"`
-					Client       string          `json:"client"`
-					AgentPurpose string          `json:"agentPurpose"`
-				} `json:"data"`
-			}
-			if err := json.Unmarshal(data, &resp); err != nil {
-				ok = false
-				lastErr = fmt.Errorf("%s parse: %w", req.URL.Host+req.URL.Path, err)
-				break
-			}
-			for _, r := range resp.Rows {
-				if r.RequestID != "" && seen[r.RequestID] {
-					continue
+	for _, endpoint := range candidates {
+		firstPage, total, err := fetchUsagePageContext(ctx, c, a, endpoint, start, end, 1)
+		if err != nil {
+			lastErr = fmt.Errorf("%s: %w", endpoint, err)
+			continue
+		}
+		if len(firstPage) < usagePageSize || len(firstPage) >= total {
+			return firstPage, nil
+		}
+		if total > usageMaxPages*usagePageSize {
+			lastErr = fmt.Errorf("usage truncated at %d records (total=%d), narrow the window", len(firstPage), total)
+			continue
+		}
+		pageCount := (total + usagePageSize - 1) / usagePageSize
+		pages := make([][]usageRecord, pageCount)
+		pages[0] = firstPage
+		pageErrors := make([]error, pageCount)
+		sem := make(chan struct{}, usagePageConcurrency)
+		var wg sync.WaitGroup
+		for pageNum := 2; pageNum <= pageCount; pageNum++ {
+			wg.Add(1)
+			go func(pageNum int) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				page, _, err := fetchUsagePageContext(ctx, c, a, endpoint, start, end, pageNum)
+				if err != nil {
+					pageErrors[pageNum-1] = err
+					return
 				}
-				if r.RequestID != "" {
-					seen[r.RequestID] = true
-				}
-				records = append(records, usageRecord{
-					RequestID:   r.RequestID,
-					RequestTime: parseUsageTime(r.RequestTime),
-					Credit:      r.Credit,
-					Model:       r.Model,
-					Client:      r.Client,
-					Agent:       r.AgentPurpose,
-				})
-			}
-			fetched += len(resp.Rows)
-			total = resp.Total
-			if len(resp.Rows) < usagePageSize || fetched >= total {
+				pages[pageNum-1] = page
+			}(pageNum)
+		}
+		wg.Wait()
+		records := make([]usageRecord, 0, total)
+		seen := make(map[string]struct{}, total)
+		pageFailed := false
+		for i, page := range pages {
+			if pageErrors[i] != nil {
+				lastErr = fmt.Errorf("%s page %d: %w", endpoint, i+1, pageErrors[i])
+				pageFailed = true
 				break
 			}
-			if pageNum == usageMaxPages {
-				ok = false
-				lastErr = fmt.Errorf("usage truncated at %d records (total=%d), narrow the window", len(records), total)
+			for _, record := range page {
+				if record.RequestID != "" {
+					if _, ok := seen[record.RequestID]; ok {
+						continue
+					}
+					seen[record.RequestID] = struct{}{}
+				}
+				records = append(records, record)
 			}
 		}
-		if ok {
-			return records, nil
+		if pageFailed {
+			continue
 		}
+		return records, nil
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("usage fetch failed")
@@ -187,6 +229,74 @@ type usageResponse struct {
 }
 
 var shanghaiZone = time.FixedZone("CST", 8*3600)
+
+const usageCacheTTL = 30 * time.Second
+
+type usageCacheEntry struct {
+	response  usageResponse
+	fetchedAt time.Time
+}
+
+var usageCache struct {
+	sync.RWMutex
+	byDays map[int]usageCacheEntry
+}
+
+type usageFlight struct {
+	done    chan struct{}
+	status  int
+	payload any
+}
+
+var usageFlights struct {
+	sync.Mutex
+	byDays map[int]*usageFlight
+}
+
+func cachedUsage(days int, force bool) (usageResponse, bool) {
+	if force {
+		return usageResponse{}, false
+	}
+	usageCache.RLock()
+	entry, ok := usageCache.byDays[days]
+	usageCache.RUnlock()
+	if !ok || time.Since(entry.fetchedAt) >= usageCacheTTL {
+		return usageResponse{}, false
+	}
+	return entry.response, true
+}
+
+func storeUsageCache(days int, response usageResponse) {
+	usageCache.Lock()
+	if usageCache.byDays == nil {
+		usageCache.byDays = make(map[int]usageCacheEntry)
+	}
+	usageCache.byDays[days] = usageCacheEntry{response: response, fetchedAt: time.Now()}
+	usageCache.Unlock()
+}
+
+func beginUsageFlight(days int) (*usageFlight, bool) {
+	usageFlights.Lock()
+	defer usageFlights.Unlock()
+	if usageFlights.byDays == nil {
+		usageFlights.byDays = make(map[int]*usageFlight)
+	}
+	if flight, ok := usageFlights.byDays[days]; ok {
+		return flight, false
+	}
+	flight := &usageFlight{done: make(chan struct{})}
+	usageFlights.byDays[days] = flight
+	return flight, true
+}
+
+func finishUsageFlight(days int, flight *usageFlight, status int, payload any) {
+	usageFlights.Lock()
+	flight.status = status
+	flight.payload = payload
+	delete(usageFlights.byDays, days)
+	close(flight.done)
+	usageFlights.Unlock()
+}
 
 // usageDayOf renders a record timestamp as a Shanghai calendar day.
 func usageDayOf(ms int64) string {
@@ -275,13 +385,31 @@ type urlValues interface {
 }
 
 // handleUsageQuery aggregates billing rows for every non-disabled account.
-// Per-account fetches run concurrently (sem=3) to bound upstream load; a
-// failed account is skipped and reported in errors[] (never blocks others).
 func handleUsageQuery(req pluginapi.ManagementRequest) (int, any) {
 	days := usageDaysParam(req.Query)
 	if days < 1 || days > usageMaxDays {
 		return http.StatusBadRequest, map[string]any{"error": "invalid days"}
 	}
+	if cached, ok := cachedUsage(days, req.Query.Get("refresh") == "1"); ok {
+		return http.StatusOK, cached
+	}
+	flight, owner := beginUsageFlight(days)
+	if !owner {
+		<-flight.done
+		return flight.status, flight.payload
+	}
+	var status int
+	var payload any
+	defer func() { finishUsageFlight(days, flight, status, payload) }()
+	status, payload = handleUsageQueryFresh(days)
+	return status, payload
+}
+
+// handleUsageQueryFresh performs the upstream work after the cache and
+// in-flight request checks have completed. Per-account fetches run concurrently
+// (sem=4) to bound upstream load; a failed account is skipped and reported in
+// errors[] (never blocks others).
+func handleUsageQueryFresh(days int) (int, any) {
 	files, err := panelHostAuthList()
 	if err != nil {
 		return http.StatusBadGateway, map[string]any{"error": "auth list unavailable"}
@@ -297,7 +425,7 @@ func handleUsageQuery(req pluginapi.ManagementRequest) (int, any) {
 		errs  []string
 		acctN int
 	)
-	sem := make(chan struct{}, 3)
+	sem := make(chan struct{}, usageAccountConcurrency)
 	for _, f := range files {
 		if f.Disabled {
 			continue
@@ -335,6 +463,7 @@ func handleUsageQuery(req pluginapi.ManagementRequest) (int, any) {
 	wg.Wait()
 	resp := aggregateUsage(all, days, errs)
 	resp.Accounts = acctN
+	storeUsageCache(days, resp)
 	return http.StatusOK, resp
 }
 
