@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.8.5 - 2026-10-04
+
+### Panel redesign
+
+- Rebuild the management panel with a compact, responsive navigation and API-style visual hierarchy.
+- Group model identity and capabilities into a compact catalog; keep model tiers and limits visible.
+- Group credit composition, supported tasks, settings, usage and request logs into focused pages.
+- Keep account credentials and chat request distribution under the CPA host.
+- Limit usage ranges to the recent-day windows supported by the management API.
+
 ## 2.8.4 - 2026-09-25
 
 ### Usage panel performance
