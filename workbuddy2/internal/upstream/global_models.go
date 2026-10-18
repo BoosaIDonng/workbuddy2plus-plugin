@@ -184,12 +184,16 @@ func (c *Client) probeGlobalModels(a *auth.Auth) (names []string, infos []ModelI
 		defaults map[string]string
 		err      error
 	}
-	v3Ch := make(chan probeResult, 1)
+	userAgents := []string{c.defaultWorkBuddyUAFor(a), "CodeBuddyIDE/4.12.0 CodeBuddy/4.12.0", "CLI/2.63.2 CodeBuddy/2.63.2"}
+	routes := make([]chan probeResult, len(userAgents))
+	for i, ua := range userAgents {
+		routes[i] = make(chan probeResult, 1)
+		go func(index int, userAgent string) {
+			n, in, e, d, err := c.globalModelsOnce(a, v3ConfigPath, userAgent)
+			routes[index] <- probeResult{n, in, e, d, err}
+		}(i, ua)
+	}
 	enterpriseCh := make(chan probeResult, 1)
-	go func() {
-		names, infos, efforts, defaults, perr := c.globalModelsOnce(a, v3ConfigPath)
-		v3Ch <- probeResult{names, infos, efforts, defaults, perr}
-	}()
 	go func() {
 		// 企业端点家族：/v2 首选 → /console 兜底（既有探活序，零回归）。
 		var lastErr error
@@ -204,7 +208,20 @@ func (c *Client) probeGlobalModels(a *auth.Auth) (names []string, infos []ModelI
 		}
 		enterpriseCh <- probeResult{err: lastErr}
 	}()
-	v3 := <-v3Ch
+	v3 := probeResult{err: fmt.Errorf("all v3 catalog routes failed")}
+	for _, ch := range routes {
+		res := <-ch
+		if res.err != nil {
+			continue
+		}
+		if v3.err != nil {
+			v3 = res
+			continue
+		}
+		v3.names, v3.infos = mergeGlobalCatalog(v3.names, v3.infos, res.names, res.infos)
+		v3.efforts = mergeEffortBuckets(v3.efforts, res.efforts)
+		v3.defaults = mergeEffortDefaults(v3.defaults, res.defaults)
+	}
 	enterprise := <-enterpriseCh
 
 	if v3.err != nil && enterprise.err != nil {
@@ -304,13 +321,17 @@ func mergeEffortDefaults(primary, secondary map[string]string) map[string]string
 }
 
 // globalModelsOnce 单端点探测。2xx + 解析出非空名单 → (names, infos, efforts, defaults, nil)；否则 (nil,...,err)。
-func (c *Client) globalModelsOnce(a *auth.Auth, path string) ([]string, []ModelInfo, map[string][]string, map[string]string, error) {
+func (c *Client) globalModelsOnce(a *auth.Auth, path string, userAgents ...string) ([]string, []ModelInfo, map[string][]string, map[string]string, error) {
 	url := c.chatBase(a) + path // 按 realm 切 base：global 账号 → global base
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	c.CommonHeaders(req, a) // 共享请求头（Origin/Referer/UA），与 FetchModels 同款
+	c.CommonHeaders(req, a)
+	if len(userAgents) > 0 {
+		req.Header.Set("User-Agent", userAgents[0])
+	}
+	// 共享请求头（Origin/Referer/UA），与 FetchModels 同款
 	req.Header.Set("Authorization", "Bearer "+a.AccessTokenValue())
 	resp, err := c.HTTP.Do(req)
 	if err != nil {

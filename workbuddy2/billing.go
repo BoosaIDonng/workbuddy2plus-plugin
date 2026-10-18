@@ -369,7 +369,7 @@ func fetchPersonalUserResourceWithCallback(sa *storedAuth, callbackID string) (*
 			Used:       used,
 			Size:       size,
 			CycleStart: a.CycleStartTime,
-			CycleEnd:   a.CycleEndTime,
+			CycleEnd:   resourcePackageExpiry(a),
 		})
 	}
 	sum.PackCount = len(sum.Packages)
@@ -693,4 +693,12 @@ func jsonStr(m map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// resourcePackageExpiry follows the upstream deduction window before cycle metadata.
+func resourcePackageExpiry(p resourcePackage) string {
+	if p.DeductionEndTime > 0 {
+		return time.UnixMilli(p.DeductionEndTime).In(shanghaiZone).Format(time.RFC3339)
+	}
+	return firstNonEmpty(p.ExpiredTime, p.PackageEndTime, p.CycleEndTime)
 }

@@ -11,6 +11,8 @@
 // 的条目让会话自愈，宁可丢一轮工具上下文，也好过整条会话死亡。
 package upstream
 
+import "strings"
+
 // repackToolResultBlocks 把插在 assistant.tool_calls 与其 tool 结果之间的非 tool 消息
 // 挪到整组之后，保证同一批 tool_call 的结果在 wire 上连续。
 //
@@ -124,6 +126,7 @@ func cleanupOrphanToolCalls(messages []any) ([]any, bool) {
 	}
 	callIDs := map[string]bool{}
 	resultIDs := map[string]bool{}
+	nameBadIDs := map[string]bool{}
 	hasTraffic := false
 	for _, m := range messages {
 		msg, ok := m.(map[string]any)
@@ -145,6 +148,9 @@ func cleanupOrphanToolCalls(messages []any) ([]any, bool) {
 					}
 					if id, ok := tc["id"].(string); ok && id != "" {
 						callIDs[id] = true
+						if toolCallNameEmpty(tc) {
+							nameBadIDs[id] = true
+						}
 						hasTraffic = true
 					}
 				}
@@ -157,6 +163,9 @@ func cleanupOrphanToolCalls(messages []any) ([]any, bool) {
 	// keepCalls：调用 id 是否双侧齐全（调用存在且结果存在）。重复 id 与乱序均按集合处理。
 	keepCalls := map[string]bool{}
 	for id := range callIDs {
+		if nameBadIDs[id] {
+			continue
+		}
 		if resultIDs[id] {
 			keepCalls[id] = true
 		}
@@ -223,4 +232,100 @@ func cleanupOrphanToolCalls(messages []any) ([]any, bool) {
 		return messages, false
 	}
 	return kept, true
+}
+
+// Reject empty tool names symmetrically with their results (upstream #148).
+func toolCallNameEmpty(tc map[string]any) bool {
+	fn, ok := tc["function"].(map[string]any)
+	if !ok {
+		return false
+	}
+	name, ok := fn["name"].(string)
+	if !ok {
+		return false
+	}
+	return strings.TrimSpace(name) == ""
+}
+
+func mergeAdjacentToolCalls(messages []any) ([]any, bool) {
+	if len(messages) < 2 {
+		return messages, false
+	}
+	out := make([]any, 0, len(messages))
+	changed := false
+	for _, m := range messages {
+		msg, ok := m.(map[string]any)
+		if !ok {
+			out = append(out, m)
+			continue
+		}
+		if role, _ := msg["role"].(string); role == "assistant" && len(out) > 0 {
+			// 形态一：本条是带 tool_calls 的 assistant 且没有正文 → 并入上一条
+			// 同为 assistant 且带 tool_calls 的消息（背靠背的并行调用声明）。
+			if tcs, ok := msg["tool_calls"].([]any); ok && len(tcs) > 0 && emptyContent(msg["content"]) {
+				if prev, ok := out[len(out)-1].(map[string]any); ok {
+					if prevRole, _ := prev["role"].(string); prevRole == "assistant" {
+						if prevCalls, ok := prev["tool_calls"].([]any); ok && len(prevCalls) > 0 {
+							prev["tool_calls"] = append(prevCalls, tcs...)
+							mergeReasoningContent(prev, msg)
+							changed = true
+							continue // 本条已并入上一条，不再单独出站
+						}
+					}
+				}
+			}
+			// 形态二（反向）：本条是纯正文 assistant，上一条是带 tool_calls 但没正文的
+			// assistant → 把正文折进上一条，合成 assistant(正文 + tool_calls)。这样
+			// "声明 tool_calls 的 assistant 紧跟它自己的结果"在两种拆分顺序下都成立。
+			//
+			// 谁会产出这个顺序：部分 OpenAI 兼容 agent 客户端的回放顺序（正文与
+			// 调用声明拆成两条独立 assistant）。
+			//
+			// 条件同样从严：只认**字符串正文**（数组正文可能含多模态块，拼接会丢结构，
+			// 交给 repackToolResultBlocks 原样处理）；上一条必须自身无正文。
+			if _, hasCalls := msg["tool_calls"]; !hasCalls {
+				if txt, ok := msg["content"].(string); ok && txt != "" {
+					if prev, ok := out[len(out)-1].(map[string]any); ok {
+						if prevRole, _ := prev["role"].(string); prevRole == "assistant" {
+							if prevCalls, ok := prev["tool_calls"].([]any); ok && len(prevCalls) > 0 && emptyContent(prev["content"]) {
+								prev["content"] = txt
+								mergeReasoningContent(prev, msg)
+								changed = true
+								continue // 正文已折进上一条
+							}
+						}
+					}
+				}
+			}
+		}
+		out = append(out, m)
+	}
+	if !changed {
+		return messages, false
+	}
+	return out, true
+}
+
+func mergeReasoningContent(dst, src map[string]any) {
+	rc, _ := src["reasoning_content"].(string)
+	if rc == "" {
+		return
+	}
+	if prevRC, _ := dst["reasoning_content"].(string); prevRC != "" {
+		dst["reasoning_content"] = prevRC + "\n" + rc
+		return
+	}
+	dst["reasoning_content"] = rc
+}
+
+func emptyContent(v any) bool {
+	switch c := v.(type) {
+	case nil:
+		return true
+	case string:
+		return c == ""
+	case []any:
+		return len(c) == 0
+	}
+	return false
 }

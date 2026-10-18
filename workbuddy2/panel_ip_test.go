@@ -189,7 +189,7 @@ func TestManagementEgressIPFailureIsGeneric(t *testing.T) {
 
 func TestPanelManualRefreshAuthenticatesBeforeEgressIP(t *testing.T) {
 	html := strings.ReplaceAll(string(panelHTML), "\r\n", "\n")
-	start := strings.Index(html, "async function load(force, btn){")
+	start := strings.Index(html, "async function load(force, btn, withCredits=true){")
 	if start < 0 {
 		t.Fatal("load function not found")
 	}
@@ -217,7 +217,7 @@ func TestPanelManualRefreshAuthenticatesBeforeEgressIP(t *testing.T) {
 
 func TestPanelProgrammaticForcedLoadDoesNotRefreshEgressIP(t *testing.T) {
 	html := strings.ReplaceAll(string(panelHTML), "\r\n", "\n")
-	start := strings.Index(html, "async function load(force, btn){")
+	start := strings.Index(html, "async function load(force, btn, withCredits=true){")
 	if start < 0 {
 		t.Fatal("load function not found")
 	}
@@ -259,19 +259,12 @@ func TestPanelShowsAndRefreshesEgressIP(t *testing.T) {
   if(!v)return;
   if(!storeSessionKey(v)){showAuth();return}
   document.getElementById("authBox").style.display="none";
-  if(await load(false)) loadEgressIP();
+  if(await load(false,null,false)){loadEgressIP();switchTab(currentTab)}
 }`},
 		{name: "refresh button", want: `<button id="refreshBtn" onclick="load(true,this)">刷新数据</button>`},
 		{name: "explicit refresh click", want: `if(force&&manualRefresh) loadEgressIP();`},
-		{name: "keyed startup", want: `async function loadInitial(){
-  if(getKey()){
-    if(await load(false)) loadEgressIP();
-    loadOverview();
-  }else{
-    showAuth();
-  }
-}
-loadInitial();`},
+		{name: "keyed snapshot startup", want: `if(await load(false,null,false))loadEgressIP();`},
+		{name: "startup restores deep link", want: `switchTab(window.location.hash.slice(1)||"accounts");`},
 		{name: "successful account load result", want: `    return true;
   }catch(e){`},
 		{name: "failed account load result", want: `    return false;

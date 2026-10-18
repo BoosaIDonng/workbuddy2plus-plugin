@@ -93,6 +93,9 @@ type resourcePackage struct {
 	CycleCapacitySize   int64  `json:"CycleCapacitySize"`
 	CycleStartTime      string `json:"CycleStartTime"`
 	CycleEndTime        string `json:"CycleEndTime"`
+	DeductionEndTime    int64  `json:"DeductionEndTime"`
+	ExpiredTime         string `json:"ExpiredTime"`
+	PackageEndTime      string `json:"PackageEndTime"`
 }
 
 // -----------------------------------------------------------------------------

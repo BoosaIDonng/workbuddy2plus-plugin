@@ -24,6 +24,7 @@ type overviewSummary struct {
 	Healthy        int                 `json:"healthy"`
 	Cooling        int                 `json:"cooling"`
 	Disabled       int                 `json:"disabled"`
+	Paused         int                 `json:"paused"`
 	Exhausted      int                 `json:"exhausted"`
 	InFlightFull   int                 `json:"in_flight_full"`
 	CheckedIn      int                 `json:"checked_in"`
@@ -56,7 +57,9 @@ func isCoolingStatus(status string) bool {
 // is inferred from the host status string (keepalive/checkin flows mark it).
 func accountReasons(a wbAccount) []string {
 	var reasons []string
-	if a.Disabled {
+	if a.ManualDisabled {
+		reasons = append(reasons, "paused")
+	} else if a.Disabled {
 		reasons = append(reasons, "disabled")
 	}
 	if a.Exhausted {
@@ -65,7 +68,7 @@ func accountReasons(a wbAccount) []string {
 	if strings.TrimSpace(a.Error) != "" {
 		reasons = append(reasons, "error")
 	}
-	if isCoolingStatus(a.Status) {
+	if isCoolingStatus(a.Status) || (a.PoolStatus != nil && a.PoolStatus.Cooling) {
 		reasons = append(reasons, "cooling")
 	}
 	return reasons
@@ -95,11 +98,13 @@ func buildOverviewFromAccounts(accounts []wbAccount, s map[string]any) overviewS
 	}
 	for _, a := range accounts {
 		switch {
+		case a.ManualDisabled:
+			ov.Paused++
 		case a.Disabled:
 			ov.Disabled++
 		case a.Exhausted:
 			ov.Exhausted++
-		case isCoolingStatus(a.Status):
+		case isCoolingStatus(a.Status) || (a.PoolStatus != nil && a.PoolStatus.Cooling):
 			// Checked before Healthy: a cooling account carries no Error, so the
 			// old ordering counted it as healthy and left Cooling at 0 forever.
 			ov.Cooling++
@@ -109,7 +114,7 @@ func buildOverviewFromAccounts(accounts []wbAccount, s map[string]any) overviewS
 		// Check-in counts only where the snapshot actually exists: /overview is
 		// built from the light-load dashboard, so an unfetched account has no
 		// check-in data and must not be counted as "not signed in".
-		if a.Checkin != nil {
+		if a.Checkin != nil && a.Region != "global" && !a.Enterprise {
 			ov.CheckinKnown++
 			if a.Checkin.TodayCheckedIn {
 				ov.CheckedIn++

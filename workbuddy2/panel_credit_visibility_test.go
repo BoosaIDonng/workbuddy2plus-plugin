@@ -134,7 +134,7 @@ func TestPanelRendersCheckinAndTaskCredit(t *testing.T) {
 		{"checkin merged on lazy load", `if(acct&&acct.checkin) a.checkin=acct.checkin;`},
 		{"checkin merged on manual refresh", `if(acct.checkin) a.checkin=acct.checkin;`},
 		{"checkin card row", `function checkinHTML(a)`},
-		{"checkin row rendered", `${checkinHTML(a)}`},
+		{"checkin row rendered", `expiryHTML(cr)+checkinHTML(a)`},
 		{"streak shown", `连续 `},
 		{"task credit column", `<th class="num">积分</th>`},
 		{"task credit total tile", `累计积分`},

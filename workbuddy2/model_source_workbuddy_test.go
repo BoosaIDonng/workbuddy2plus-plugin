@@ -242,7 +242,6 @@ func TestFetchWorkBuddyCatalogRoutesByJWTRealm(t *testing.T) {
 		origin string
 	}{
 		{realm: workBuddyRealmCN, base: upstreamBaseCN, origin: originReferer},
-		{realm: workBuddyRealmGlobal, base: upstreamBaseGlobal, origin: originRefererGlobal},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.realm), func(t *testing.T) {
@@ -312,7 +311,6 @@ func TestFetchWorkBuddyCatalogLegacyRequestPreservesRealmRouting(t *testing.T) {
 		origin string
 	}{
 		{realm: workBuddyRealmCN, base: upstreamBaseCN, origin: originReferer},
-		{realm: workBuddyRealmGlobal, base: upstreamBaseGlobal, origin: originRefererGlobal},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.realm), func(t *testing.T) {

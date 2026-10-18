@@ -119,7 +119,14 @@ func pumpUpstreamStream(httpReq *http.Request, cancel context.CancelFunc, stream
 		return
 	}
 	collector := &sseUsageCollector{}
-	normalizer := wupstream.NewChunkNormalizer()
+	var requestBody []byte
+	if httpReq.GetBody != nil {
+		if r, err := httpReq.GetBody(); err == nil {
+			requestBody, _ = io.ReadAll(r)
+			r.Close()
+		}
+	}
+	normalizer := wupstream.NewMarkupChunkNormalizer(requestBody)
 	scanner := bufio.NewScanner(newHostStreamReader(stream))
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	validEvents := 0
@@ -129,13 +136,8 @@ func pumpUpstreamStream(httpReq *http.Request, cancel context.CancelFunc, stream
 		if content == "" {
 			continue
 		}
-		cleaned, valid, done := normalizer.Normalize(content)
-		if done {
-			break
-		}
-		if cleaned == "" {
-			continue
-		}
+		frames, valid, done := normalizer.NormalizeFrames(content)
+
 		collector.feed(content)
 		if valid {
 			validEvents++
@@ -149,11 +151,24 @@ func pumpUpstreamStream(httpReq *http.Request, cancel context.CancelFunc, stream
 			noteFirstToken(authUID, upstreamModel, requestedModel, started)
 			firstTokenMarked = true
 		}
+		for _, cleaned := range frames {
+			if sseFramed {
+				cleaned = "data: " + cleaned
+			}
+			if err := streamEmit(streamID, []byte(cleaned)); err != nil {
+				publishUsage(requestedModel, upstreamModel, authUID, started, collector.detail(), true, 0, "stream_emit: "+err.Error())
+				return
+			}
+		}
+		if done {
+			break
+		}
+	}
+	for _, cleaned := range normalizer.FlushFrames() {
 		if sseFramed {
 			cleaned = "data: " + cleaned
 		}
 		if err := streamEmit(streamID, []byte(cleaned)); err != nil {
-			// Client disconnected / host closed stream — abort; do not report success.
 			publishUsage(requestedModel, upstreamModel, authUID, started, collector.detail(), true, 0, "stream_emit: "+err.Error())
 			return
 		}
@@ -201,7 +216,7 @@ func collectUpstreamStream(body []byte, sa *storedAuth, a *wauth.Auth, sseFramed
 			message: fmt.Sprintf("upstream %d: %s", statusCode, truncateRedacted(string(errPayload), 200)),
 		}
 	}
-	chunks, errAgg := aggregateSSEWithCollector(reader, sseFramed, collector)
+	chunks, errAgg := aggregateSSEWithCollector(reader, sseFramed, collector, body)
 	if errAgg != nil {
 		return chunks, statusCode, errAgg
 	}
@@ -234,10 +249,14 @@ func clientNeedsSSEFrame(metadata map[string]any) bool {
 // itself. A mid-stream read error aborts collection and is returned so the
 // caller records the attempt as failed. The collector, when non-nil,
 // observes raw upstream chunks for usage extraction.
-func aggregateSSEWithCollector(r io.Reader, sseFramed bool, collector *sseUsageCollector) ([]pluginapi.ExecutorStreamChunk, error) {
+func aggregateSSEWithCollector(r io.Reader, sseFramed bool, collector *sseUsageCollector, requestBodies ...[]byte) ([]pluginapi.ExecutorStreamChunk, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
-	normalizer := wupstream.NewChunkNormalizer()
+	var body []byte
+	if len(requestBodies) > 0 {
+		body = requestBodies[0]
+	}
+	normalizer := wupstream.NewMarkupChunkNormalizer(body)
 	var chunks []pluginapi.ExecutorStreamChunk
 	validEvents := 0
 	for scanner.Scan() {
@@ -245,24 +264,31 @@ func aggregateSSEWithCollector(r io.Reader, sseFramed bool, collector *sseUsageC
 		if content == "" {
 			continue
 		}
-		cleaned, valid, done := normalizer.Normalize(content)
-		if done {
-			break
-		}
-		if cleaned == "" {
-			continue
-		}
+		frames, valid, done := normalizer.NormalizeFrames(content)
+
 		if collector != nil {
 			collector.feed(content)
 		}
 		if valid {
 			validEvents++
 		}
+		for _, cleaned := range frames {
+			if sseFramed {
+				cleaned = "data: " + cleaned
+			}
+			chunks = append(chunks, pluginapi.ExecutorStreamChunk{Payload: []byte(cleaned)})
+		}
+		if done {
+			break
+		}
+	}
+	for _, cleaned := range normalizer.FlushFrames() {
 		if sseFramed {
 			cleaned = "data: " + cleaned
 		}
 		chunks = append(chunks, pluginapi.ExecutorStreamChunk{Payload: []byte(cleaned)})
 	}
+
 	if err := scanner.Err(); err != nil {
 		return chunks, fmt.Errorf("upstream stream read error: %w", err)
 	}

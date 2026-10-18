@@ -94,6 +94,14 @@ func parseWorkBuddyV3Config(raw []byte) ([]modelFacts, error) {
 		Code *int `json:"code"`
 		Data *struct {
 			Agents []workBuddyAgentWire `json:"agents"`
+			Models []struct {
+				ID       string `json:"id"`
+				Name     string `json:"name"`
+				Disabled bool   `json:"disabled"`
+				Context  *int64 `json:"maxInputTokens"`
+				Output   *int64 `json:"maxOutputTokens"`
+				Images   bool   `json:"supportsImages"`
+			} `json:"models"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &response); err != nil {
@@ -106,6 +114,24 @@ func parseWorkBuddyV3Config(raw []byte) ([]modelFacts, error) {
 		return nil, fmt.Errorf("v3 config data is missing")
 	}
 
+	if len(response.Data.Models) > 0 {
+		var models []modelFacts
+		for _, m := range response.Data.Models {
+			if m.Disabled {
+				continue
+			}
+			id := m.ID
+			if id == "" {
+				id = m.Name
+			}
+			facts := modelFacts{ID: id, Name: m.Name, ContextLength: m.Context, MaxCompletionTokens: m.Output}
+			if m.Images {
+				facts.SupportedInputModalities = []string{"text", "image"}
+			}
+			models = append(models, facts)
+		}
+		return validateModelFacts(models)
+	}
 	var modelIDs []string
 	foundCLI := false
 	for _, agent := range response.Data.Agents {
@@ -215,6 +241,9 @@ func fetchWorkBuddyCatalog(sa *storedAuth, callbackID string, do modelHTTPDo) (w
 		return workBuddyCatalog{}, &modelSourceError{Kind: modelSourceSchemaFailure, err: err}
 	}
 
+	if realm == workBuddyRealmGlobal {
+		return fetchGlobalWorkBuddyCatalog(sa, callbackID, do)
+	}
 	base := upstreamBaseCN
 	origin := originReferer
 	if realm == workBuddyRealmGlobal {
@@ -300,4 +329,72 @@ func workBuddyRealmFromAccessToken(accessToken string) (workBuddyRealm, error) {
 	default:
 		return "", fmt.Errorf("JWT issuer host is unsupported")
 	}
+}
+
+// fetchGlobalWorkBuddyCatalog follows the upstream desktop/IDE/CLI catalog union.
+// Every request still goes through the host callback and one bounded deadline.
+func fetchGlobalWorkBuddyCatalog(sa *storedAuth, callbackID string, do modelHTTPDo) (workBuddyCatalog, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), modelSourceRequestTimeout)
+	defer cancel()
+	desktopReq, _ := http.NewRequest(http.MethodGet, upstreamBaseGlobal+"/v3/config", nil)
+	wbClient.CommonHeaders(desktopReq, wbAuth(nil, sa))
+	uas := []string{desktopReq.Header.Get("User-Agent"), "CodeBuddyIDE/4.12.0 CodeBuddy/4.12.0", "CLI/2.63.2 CodeBuddy/2.63.2"}
+	seen := map[string]bool{}
+	var merged []modelFacts
+	endpoint := workBuddyEndpointLegacyPersonalModels
+	var lastErr error
+	request := func(path, ua string, parse func([]byte) ([]modelFacts, error)) bool {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, upstreamBaseGlobal+path, nil)
+		if err != nil {
+			lastErr = err
+			return false
+		}
+		backendHeaders(req, sa)
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Origin", originRefererGlobal)
+		req.Header.Set("Referer", originRefererGlobal+"/")
+		req.Header.Set("User-Agent", ua)
+		resp, err := do(req, callbackID)
+		if err != nil {
+			lastErr = &modelSourceError{Kind: modelSourceTransportFailure, err: err}
+			return false
+		}
+		if resp == nil {
+			lastErr = &modelSourceError{Kind: modelSourceTransportFailure}
+			return false
+		}
+		if resp.StatusCode != http.StatusOK {
+			lastErr = &modelSourceError{Kind: modelSourceHTTPFailure, StatusCode: resp.StatusCode}
+			return false
+		}
+		models, err := parse(resp.Body)
+		if err != nil {
+			lastErr = &modelSourceError{Kind: modelSourceSchemaFailure, err: err}
+			return false
+		}
+		if path == "/v3/config" {
+			endpoint = workBuddyEndpointV3Config
+		}
+		for _, m := range models {
+			if !seen[m.ID] {
+				seen[m.ID] = true
+				merged = append(merged, m)
+			}
+		}
+		return true
+	}
+	for _, ua := range uas {
+		request("/v3/config", ua, parseWorkBuddyV3Config)
+	}
+	// Enterprise family adds models omitted by all v3 variants, preserving v3 metadata.
+	if !request("/v2/enterprises/personal/models", uas[0], parseWorkBuddyLegacyModels) {
+		request("/console/enterprises/personal/models", uas[0], parseWorkBuddyLegacyModels)
+	}
+	if len(merged) == 0 {
+		if lastErr == nil {
+			lastErr = &modelSourceError{Kind: modelSourceSchemaFailure}
+		}
+		return workBuddyCatalog{}, lastErr
+	}
+	return workBuddyCatalog{Realm: workBuddyRealmGlobal, Endpoint: endpoint, Models: merged}, nil
 }

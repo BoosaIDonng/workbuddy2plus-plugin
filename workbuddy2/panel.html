@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WorkBuddy 面板</title>
 <style>
-/* Theme tokens aligned with CPA management panel (key-policy / themes.scss):
-   default :root = light (paper); data-theme=white | dark; embedded iframe syncs parent. */
+/* API-style palette; theme selection follows the CPA host when embedded. */
 :root{
   --bg:#f4f5f8;--card:#ffffff;--border:#e2e5ec;--fg:#14171f;--mut:#545c6e;
   --acc:#3d5fe0;--on-acc:#ffffff;--ok:#0f9d63;--warn:#b47611;--err:#cf3b34;
@@ -52,14 +51,14 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
 .wrap{max-width:1320px;margin:0 auto;padding:22px 28px}
 h1{font-size:20px;margin:0 0 4px}.sub{color:var(--mut);font-size:13px;margin:0}
-.app-shell{min-height:100vh;display:grid;grid-template-columns:220px minmax(0,1fr)}
+.app-shell{min-height:100vh;display:grid;grid-template-columns:208px minmax(0,1fr)}
 .side-nav{background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;padding:18px 10px}
 .brand{padding:8px 12px 20px;border-bottom:1px solid var(--border);margin-bottom:12px}
 .brand-name{font-size:16px;font-weight:700;letter-spacing:-.02em}
 .brand-sub{font-size:11px;color:var(--mut);margin-top:3px}
 .side-nav .tabs{display:flex;flex-direction:column;gap:4px;margin:0}
-.tab-btn{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:transparent;border:0;color:var(--mut);border-radius:10px;padding:12px 13px;font-size:14px;cursor:pointer;font-weight:500}
-.tab-btn svg{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tab-btn{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:transparent;border:0;color:var(--mut);border-radius:7px;padding:9px 11px;font-size:13px;cursor:pointer;font-weight:500}
+.tab-btn svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .tab-btn:hover{background:var(--surface);color:var(--fg)}
 .tab-btn.active{background:var(--acc-ring);color:var(--acc);border-color:transparent;font-weight:650}
 .side-note{margin-top:auto;border-top:1px solid var(--border);padding:14px 10px 2px;color:var(--mut);font-size:11px;line-height:1.5}
@@ -73,7 +72,7 @@ h1{font-size:20px;margin:0 0 4px}.sub{color:var(--mut);font-size:13px;margin:0}
 button{background:var(--acc);color:var(--on-acc);border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px}
 button.sec{background:var(--btn-sec);color:var(--fg)}button.sec:hover{background:var(--btn-sec-hover)}button:disabled{opacity:.5;cursor:default}
 .toggle{display:flex;gap:8px;align-items:center;color:var(--mut);font-size:13px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.grid{display:block;overflow-x:auto}
 .card,.summary{background:var(--card);border:1px solid var(--border);border-radius:12px}
 .card{padding:16px}
 .card.selected{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-ring)}
@@ -209,6 +208,40 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .model-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}.model-chip{display:inline-block;padding:2px 6px;border-radius:5px;background:var(--surface-muted);color:var(--mut);font-size:10px;line-height:1.3;white-space:nowrap}
 .model-chip.accent{background:var(--acc-ring);color:var(--acc)}.model-chip.ok{background:var(--ok-soft);color:var(--ok)}
 @media(max-width:800px){.app-shell{display:block}.side-nav{position:static;height:auto;padding:8px 10px;border-right:0;border-bottom:1px solid var(--border)}.brand{padding:5px 8px 10px;margin-bottom:8px}.side-nav .tabs{flex-direction:row;overflow-x:auto;padding-bottom:2px}.side-nav .tab-btn{width:auto;min-width:max-content;padding:9px 12px}.side-note{display:none}.topbar{padding:13px 16px}.wrap{padding:16px}.tab-btn svg{width:18px;height:18px}}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+button,input,select,textarea{font-family:inherit}input,select{min-width:0}
+button.sec{border:1px solid var(--border)}button.sec:hover{border-color:var(--acc)}
+.log-table th.num{text-align:right}.log-table tbody tr:hover{background:var(--surface)}
+.table-scroll{overflow-x:auto}.table-scroll>.log-table{min-width:660px}
+#ovTiles{gap:0;background:var(--card);border:1px solid var(--border);border-radius:11px;overflow:hidden}
+#ovTiles .ov-tile{border:0;border-radius:0;border-right:1px solid var(--border)}
+#ovTiles{grid-template-columns:repeat(9,minmax(0,1fr))}
+@media(max-width:1100px){#ovTiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.ov-tile .v{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace}
+.account-table{min-width:900px;background:var(--card);border:1px solid var(--border)}
+.account-table td{padding:13px 12px;vertical-align:middle}.account-table th{padding:10px 12px}
+.account-table .account-identity{min-width:200px;max-width:290px}.account-table .selected{background:var(--acc-ring)}
+.account-table .actions{margin:0;gap:5px;flex-wrap:wrap;min-width:240px}.account-table button{padding:5px 8px;font-size:12px}
+.account-table .pb{min-width:150px;margin:0}.account-table .pb-meta{display:none}
+.account-table .uid{margin:3px 0 0}.account-table .badge{font-size:10px;padding:2px 6px}
+.account-table details{margin-top:5px}.account-table summary{cursor:pointer;color:var(--mut);font-size:11px}
+.account-table details .hint{padding-top:5px;overflow-wrap:anywhere}
+.filter-select{flex:0 1 auto;width:auto}.segmented{display:flex;flex-wrap:wrap;gap:4px}
+.segmented button{padding:5px 11px;background:var(--surface);color:var(--mut);border:1px solid var(--border)}
+.segmented button.active{color:var(--acc);background:var(--acc-ring);border-color:var(--acc)}
+.package-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:12px}
+.package-account{padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:9px}
+.package-account strong{display:block;margin-bottom:5px}.package-account .balance{font:600 25px ui-monospace,monospace;margin:8px 0}
+.mixbar{height:8px;display:flex;border-radius:99px;background:var(--surface-muted);overflow:hidden;margin:10px 0}
+.mixbar i{display:block;height:100%}.chart-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--mut);margin-top:10px}
+.chart-legend i{display:inline-block;width:8px;height:8px;border-radius:3px;margin-right:5px}
+.package-detail{padding:10px 0;border-bottom:1px solid var(--border)}.package-detail summary{cursor:pointer;font-size:13px;font-weight:600}
+.package-detail .table-scroll{margin-top:10px}.expiry-notice{display:grid;grid-template-columns:minmax(130px,1fr) 3fr;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
+.expiry-notice:last-child{border-bottom:0}.detail-line{font-size:11px;color:var(--mut);margin-top:4px;overflow-wrap:anywhere}
+#modelsTable{color:var(--fg)}.model-table td:nth-child(4){min-width:150px;white-space:normal}.model-tags{margin-top:3px}
+@media(max-width:600px){.topbar{align-items:flex-start;flex-direction:column;gap:6px}.top-meta{white-space:normal}.credit-row{grid-template-columns:90px 1fr}.credit-meta{grid-column:1/-1}.expiry-notice{grid-template-columns:1fr;gap:2px}.toasts{max-width:calc(100vw - 32px)}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 </style>
 <script>
 /* Early theme sync (before body paint): mirror CPA parent data-theme when
@@ -286,7 +319,8 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     <div class="card attn-card" id="ovAttention" style="display:none">
       <h3 style="margin:0 0 6px;font-size:14px">需要关注</h3><div id="ovAttentionRows"></div>
     </div>
-    <div class="action-row"><button class="sec" id="ovRefreshBtn" onclick="loadOverview(this)">刷新概览</button><span class="toggle" id="ovTime"></span></div>
+    <div class="summary-hd"><span class="summary-meta" id="ovTime"></span><button class="sec" id="ovRefreshBtn" onclick="loadOverview(this)">刷新概览</button></div>
+    <div class="card set-card"><div class="summary-hd"><h3>积分到期提醒</h3><span class="hint">按已加载的套餐快照估算</span></div><div id="expiryNotice" class="hint">等待积分数据…</div></div>
     <div class="card set-card"><div class="hint">聊天请求与账号分发由 CPA 宿主处理。面板选择仅在插件配置 <code>scheduler_mode: credits</code> 时影响路由。</div></div>
     <div class="bar">
       <button class="sec" id="importBtn" onclick="openImportModal()">导入凭证</button>
@@ -295,7 +329,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
       <button class="sec" onclick="checkinAll(this)">全部签到</button>
       <button class="sec" onclick="claimTrialAll(this)" title="仅 Global · 一次性">全部领取</button>
       <button class="sec" onclick="openBatchModal('credits')">刷新全部积分</button>
-      <label class="toggle" title="仅 CN 账号 09:00 / 21:00"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"> 自动签到</label>
+      <label class="toggle" title="仅 CN 个人账号 09:00 / 21:00"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"> 自动签到</label>
     </div>
     <div class="filter-bar" id="filterBar">
       <button type="button" class="ftag active" data-region="all" onclick="filterRegion('all',this)">全部 <span class="cnt" id="cntAll">0</span></button>
@@ -305,7 +339,8 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
       <input id="accountSearch" class="field-input" type="search" placeholder="搜索昵称、标签、文件名或 UID" oninput="setAccountSearch(this.value)" aria-label="搜索账号">
       <button type="button" class="ftag" id="remainSort" onclick="cycleRemainSort(this)">剩余积分：原始顺序</button>
     </div>
-    <div class="summary card" id="summaryBox" style="display:none"></div>
+    <div class="card set-card"><div class="summary-hd"><h3>模型锁池</h3><span class="hint">插件已记录的模型限流，按预计恢复时间排序</span></div><div id="modelLocks" class="table-scroll hint">暂无快照</div></div>
+    <details class="summary card" id="summaryBox" style="display:none"></details>
     <div id="grid" class="grid"><div class="loading">加载中…</div></div>
   </div>
   <div class="tab-view" id="tab-usage">
@@ -320,8 +355,8 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
       <span class="toggle" id="usageMeta"></span>
     </div>
     <div class="ov-grid" id="usageTiles"></div>
-    <div class="card set-card"><h3>模型积分分布</h3><div id="usageByModel" class="hint">加载中…</div></div>
-    <div class="card set-card"><h3>客户端分布</h3><div id="usageByClient" class="hint">加载中…</div></div>
+    <div class="card set-card"><div class="summary-hd"><h3>用量明细</h3><div class="segmented" id="usageDimensions"><button class="active" data-dim="model" onclick="setUsageDimension('model')">按模型</button><button data-dim="client" onclick="setUsageDimension('client')">按客户端</button><button data-dim="day" onclick="setUsageDimension('day')">按日期</button></div><select id="usageSort" class="field-input filter-select" aria-label="用量排序" onchange="renderUsageDetail()"><option value="credit">积分消耗从高到低</option><option value="requests">请求数从高到低</option><option value="name">名称 / 日期</option></select></div><div id="usageDetail" class="table-scroll hint">加载中…</div></div>
+    <div class="card set-card"><h3>最近积分扣除</h3><div id="usageRecent" class="table-scroll hint">加载中…</div><p class="hint">来自官方账单，数据可能延迟；与运行日志的本机请求记录口径不同。</p></div>
   </div>
   <div class="tab-view" id="tab-logs">
     <div class="action-row" style="margin-bottom:10px">
@@ -330,6 +365,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
         <option value="100" selected>最近 100 条</option>
         <option value="300">最近 300 条</option>
       </select>
+      <input id="logsSearch" class="field-input" type="search" placeholder="搜索模型、别名、账号或错误信息" aria-label="搜索请求记录" oninput="renderRequestLog()">
       <select id="logsFilter" class="field-input" style="max-width:130px" aria-label="状态筛选" onchange="renderRequestLog()">
         <option value="all">全部状态</option>
         <option value="failed">仅失败</option>
@@ -339,14 +375,15 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
       <span class="toggle" id="logsMeta"></span>
     </div>
     <div class="ov-grid" id="logsTiles"></div>
-    <div class="card set-card"><h3>请求明细</h3><div id="logsTable" class="hint">加载中…</div></div>
+    <div class="card set-card"><h3>请求明细</h3><div id="logsTable" class="table-scroll hint">加载中…</div></div>
   </div>
   <div class="tab-view" id="tab-packages">
     <div class="action-row" style="margin-bottom:10px"><span class="toggle" id="packagesMeta">各账号可用积分与套餐到期情况</span><button class="sec" onclick="loadCreditComposition(this)">刷新构成</button></div>
     <div class="ov-grid" id="packagesTiles"><div class="loading">等待账号数据…</div></div>
     <div class="card set-card"><h3>积分到期分布</h3><div id="packageExpiry" class="hint">加载账号套餐后显示</div></div>
-    <div class="card set-card"><h3>账号套餐</h3><div id="packageTable" class="hint">加载账号套餐后显示</div></div>
-    <div class="card set-card"><h3>积分获得记录</h3><div id="creditLedger" class="hint">加载中…</div></div>
+    <div class="card set-card"><div class="summary-hd"><h3>账号对比</h3><select id="packageSort" class="field-input filter-select" aria-label="套餐明细排序" onchange="renderCreditComposition()"><option value="expiry">按到期时间</option><option value="size">按面额大小</option></select></div><div id="packageAccounts" class="package-grid"></div></div>
+    <div class="card set-card"><h3>逐包明细</h3><div id="packageTable" class="hint">加载账号套餐后显示</div></div>
+    <div class="card set-card"><h3>积分获得记录</h3><div id="creditLedger" class="table-scroll hint">加载中…</div></div>
   </div>
   <div class="tab-view" id="tab-tasks">
     <div class="action-row" style="margin-bottom:10px">
@@ -356,22 +393,29 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
         <option value="500">最近 500 条</option>
       </select>
       <button class="sec" onclick="loadTaskLog(this)">刷新任务</button>
-      <span class="toggle" id="tasksMeta"></span>
+      <input id="tasksSearch" class="field-input" type="search" aria-label="搜索任务记录" placeholder="搜索任务、账号或执行信息" oninput="renderTaskLog()">
+      <select id="tasksFilter" class="field-input filter-select" aria-label="任务结果" onchange="renderTaskLog()"><option value="all">全部结果</option><option value="failed">仅失败</option><option value="ok">仅成功</option></select>
+      <span class="toggle" id="tasksMeta" role="status"></span>
     </div>
     <div class="card set-card"><h3>手动运行</h3><div class="task-action-grid">
-      <div class="task-action"><strong>每日签到</strong><span>为国内版账号签到并对账</span><button class="sec" onclick="checkinAll(this)">运行签到</button></div>
-      <div class="task-action"><strong>活跃地图</strong><span>上报活跃并领取成长奖励</span><button class="sec" onclick="runPluginTask('activity',this)">运行活跃任务</button></div>
-      <div class="task-action"><strong>猫猫旅行</strong><span>领养、派出或领取旅行奖励</span><button class="sec" onclick="runPluginTask('travel',this)">运行旅行任务</button></div>
+      <div class="task-action"><strong>每日签到</strong><span>为国内版个人账号签到并对账</span><button class="sec" onclick="checkinAll(this)">运行签到</button></div>
+      <div class="task-action"><strong>活跃地图</strong><span>上报活跃并领取成长奖励</span><button class="sec" id="taskActivity" onclick="runPluginTask('activity',this)">运行活跃任务</button></div>
+      <div class="task-action"><strong>猫猫旅行</strong><span>领养、派出或领取旅行奖励</span><button class="sec" id="taskTravel" onclick="runPluginTask('travel',this)">运行旅行任务</button></div>
       <div class="task-action"><strong>Token 保活</strong><span>刷新账号访问令牌</span><button class="sec" onclick="runKeepaliveNow(this)">立即保活</button></div>
     </div><p class="hint" style="margin:10px 0 0">账号扫描和任务执行均由插件通过 CPA 账号存储完成；任务结果会显示在下方。</p></div>
     <div class="ov-grid" id="tasksTiles"></div>
-    <div class="card set-card"><h3>执行明细</h3><div id="tasksTable" class="hint">加载中…</div></div>
+    <div class="card set-card"><h3>执行明细</h3><div id="tasksTable" class="table-scroll hint">加载中…</div></div>
   </div>
   <div class="tab-view" id="tab-models">
     <div class="card set-card">
       <div class="summary-hd"><h3 style="margin:0;font-size:14px">模型能力</h3><span class="summary-meta" id="modelsMeta">模型目录</span><button class="sec" onclick="loadModelCenter(this)">重新获取</button></div>
       <div class="action-row" style="margin:0 0 8px">
         <input id="modelsSearch" class="field-input" type="search" placeholder="搜索模型 ID / 名称 / 厂商 / 能力" oninput="renderModelCenter()" aria-label="搜索模型">
+        <select id="modelsRealm" class="field-input filter-select" aria-label="模型区域" onchange="renderModelCenter()"><option value="">全部区域</option><option value="cn">CN</option><option value="global">Global</option></select>
+        <select id="modelsCapability" class="field-input filter-select" aria-label="模型能力" onchange="renderModelCenter()"><option value="">全部能力</option><option value="supports_reasoning">支持思考</option><option value="supports_tools">工具调用</option><option value="supports_images">视觉</option><option value="is_default">默认模型</option></select>
+        <select id="modelsEffort" class="field-input filter-select" aria-label="思考档位" onchange="renderModelCenter()"><option value="">全部档位</option></select>
+        <select id="modelsSort" class="field-input filter-select" aria-label="模型排序" onchange="renderModelCenter()"><option value="">默认顺序</option><option value="credits">倍率从低到高</option><option value="context_window">上下文从大到小</option><option value="max_tokens">最大输出从大到小</option><option value="id">模型 ID</option></select>
+        <button class="sec" onclick="resetModelFilters()">重置</button>
       </div>
       <div id="modelsTable" class="hint">加载中…</div>
     </div>
@@ -379,7 +423,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
   <div class="tab-view" id="tab-settings">
     <div class="card set-card">
       <h3>任务开关</h3>
-      <label class="toggle"><input type="checkbox" id="autoToggleSetting" onchange="toggleAuto(this.checked)"> 每日 09:00 / 21:00 自动签到（仅 CN 账号）</label>
+      <label class="toggle"><input type="checkbox" id="autoToggleSetting" onchange="toggleAuto(this.checked)"> 每日 09:00 / 21:00 自动签到（仅 CN 个人账号）</label>
       <p class="hint">与「账号池」页的自动签到开关相同；其余自动任务在 CPA 插件配置中管理。</p>
     </div>
     <div class="card set-card">
@@ -525,7 +569,7 @@ async function saveKey(){
   if(!v)return;
   if(!storeSessionKey(v)){showAuth();return}
   document.getElementById("authBox").style.display="none";
-  if(await load(false)) loadEgressIP();
+  if(await load(false,null,false)){loadEgressIP();switchTab(currentTab)}
 }
 function showAuth(){document.getElementById("authBox").style.display="block";const i=document.getElementById("keyInput");i&&i.focus()}
 function authHeaders(k){return k?{"Authorization":"Bearer "+k}:{}}
@@ -578,15 +622,15 @@ function markTrialDone(btn){
   btn.dataset.orig="已领取";
 }
 function fmtRemain(c){if(!c)return "-";const t=(c.total_remain||0)+(c.total_used||0);return c.total_remain+" 余 / "+t+" 总"}
-function esc(s){return (s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function progressHTML(c){
   // total uses size when known; remain = spendable, used = cycle spend.
   // Check-in adds packs → size/remain go UP (grant). Chat spend → used goes UP, remain DOWN.
-  if(!c||(!(c.total_remain||0)&&!(c.total_used||0)&&!(c.total_size||0)))return '<div class="pb"><div class="pb-label"><span>可用积分</span><span class="spin"></span>加载中…</span></div><div class="pb-track"><div class="pb-bar" style="width:0%"></div></div></div>';
+  if(!c)return '<div class="pb"><div class="pb-label"><span>可用积分</span>未查询</span></div><div class="pb-track"><div class="pb-bar" style="width:0%"></div></div></div>';
   const remain=c.total_remain||0, used=c.total_used||0;
   const size=c.total_size||(remain+used);
   const total=size>0?size:(remain+used);
-  const pct=total>0?Math.round(used/total*100):0;
+  const pct=total>0?Math.max(0,Math.min(100,Math.round(used/total*100))):0;
   let color='var(--ok)'; if(pct>60)color='var(--warn)'; if(pct>85)color='var(--err)';
   const when=c.fetched_at?` · 快照 ${esc(String(c.fetched_at).replace('T',' ').replace('Z',' UTC'))}`:'';
   return `<div class="pb"><div class="pb-label"><span>可用 ${remain}</span><span>已用 ${used} · ${pct}%</span></div><div class="pb-track"><div class="pb-bar" style="width:${pct}%;background:${color}"></div></div><div class="pb-meta">剩余 ${remain} · 已用 ${used} · 额度池 ${total}${c.pack_count?` · ${c.pack_count} 个包`:''}${when}</div></div>`;
@@ -611,7 +655,6 @@ function bindCardActions(root){
   });
 }
 function card(a){
-  const plan=(a.plan||"unknown").toLowerCase();
   const ci=a.checkin||{}, cr=a.credits;
   const exhausted=!!a.exhausted||(!!cr&&(cr.total_remain||0)===0&&((cr.total_used||0)>0||(cr.total_size||0)>0||(cr.packages&&cr.packages.length)));
   const region=a.region||"cn";
@@ -621,7 +664,9 @@ function card(a){
   const regionBadge=`<span class="badge ${region}">${isGlobal?"Global":"CN"}</span>`;
   // CN: 签到 button; Global: 领取专家加油包 button (or 已领取 if trial_claimed)
   let actionHTML;
-  if(isGlobal){
+  if(a.enterprise){
+    actionHTML="";
+  }else if(isGlobal){
     if(a.trial_claimed){
       actionHTML='<button class="done" disabled="disabled">已领取</button>';
     }else{
@@ -642,23 +687,24 @@ function card(a){
   const toggleBtn=disabled
     ? `<button class="sec" data-action="toggle" data-auth-index="${esc(a.auth_index)}" data-disabled="false" title="放回路由池">恢复</button>`
     : `<button class="sec" data-action="toggle" data-auth-index="${esc(a.auth_index)}" data-disabled="true" title="摘出路由池（保留凭证）">停用</button>`;
-  const badges=(selected?`<span class="badge" style="background:var(--acc-ring);color:var(--acc);border-color:var(--acc)">使用中</span>`:"")+(disabled?`<span class="badge disabled">已禁用</span>`:"")+(exhausted?`<span class="badge exhausted">耗尽</span>`:"")+regionBadge+`<span class="badge ${plan}">${esc(a.plan||"-")}</span>`;
-  return `<div class="card${selected?" selected":""}" data-region="${region}" data-auth="${esc(a.auth_index)}">
-  <h2>${esc(a.nickname||a.label||a.name)} <span style="display:flex;gap:6px;align-items:center">${badges}</span></h2>
-  <div class="uid">${esc(a.uid||"")} · ${esc(a.name||"")}</div>
-  ${progressHTML(cr)}
-  ${expiryHTML(cr)}
-  ${checkinHTML(a)}
-  ${a.error?`<div class="row"><span class="k">错误</span><span class="v err">${esc(a.error)}</span></div>`:""}
-  <div class="actions">${selectBtn}${refreshBtn}${actionHTML}${toggleBtn}</div>
-  </div>`;
+  const status=disabled?(a.manual_disabled?"暂停选号":"已禁用"):exhausted?"积分耗尽":a.error?"查询异常":a.pool_status?.cooling?"冷却中":"可用";
+  const statusClass=disabled?"disabled":exhausted||a.error?"exhausted":"cn";
+  const detail=expiryHTML(cr)+checkinHTML(a);
+  return `<tr class="${selected?"selected":""}" data-region="${region}" data-auth="${esc(a.auth_index)}">
+    <td class="account-identity"><strong>${esc(a.nickname||a.label||a.name)}</strong> ${regionBadge} ${a.enterprise?'<span class="badge disabled">企业版</span>':""}
+      <div class="uid" title="${esc(a.uid||a.name)}">${esc(a.uid||a.name||"-")}</div>
+      <details><summary>账号详情</summary><div class="hint">${esc(a.name||"")}</div>${detail}</details></td>
+    <td><span class="badge ${statusClass}">${status}</span>${selected?'<div class="detail-line status-ok">面板选中</div>':""}${a.error?'<div class="detail-line status-err">'+esc(a.error)+'</div>':""}</td>
+    <td>${progressHTML(cr)}</td><td>${esc(a.plan||"—")}</td>
+    <td>${isGlobal||a.enterprise?"—":a.checkin?(ci.today_checked_in?'<span class="status-ok">已签到</span>':"未签到"):"待查询"}</td>
+    <td><div class="actions">${selectBtn}${refreshBtn}${actionHTML}${toggleBtn}</div></td></tr>`;
 }
 // checkinHTML renders today's check-in state from the checkin snapshot. The
 // action button already conveys signed/unsigned, but not the streak or what the
 // last grant was worth — both come from fields the backend has always sent.
 function checkinHTML(a){
   const ci=a.checkin||{};
-  if((a.region||"cn")==="global") return "";
+  if((a.region||"cn")==="global"||a.enterprise) return "";
   if(ci.active===false && !ci.today_checked_in) return "";
   const parts=[];
   parts.push(ci.today_checked_in?'<span class="status-ok">今日已签到</span>':'<span class="status-err">今日未签到</span>');
@@ -683,7 +729,12 @@ function lazyLoadCredits(accounts){
 }
 function fetchAccountCredits(a){
   if(a.credits||a.disabled) return Promise.resolve(a);
-  if(creditFlights.has(a.auth_index)) return creditFlights.get(a.auth_index);
+  if(creditFlights.has(a.auth_index)) return creditFlights.get(a.auth_index).then(source=>{
+    for(const key of ["credits","exhausted","trial_claimed","plan","checkin","error"]) {
+      if(source[key]!==undefined) a[key]=source[key];
+    }
+    updateOneCard();return a;
+  });
   const fetch=()=>api(`/credits?auth_index=${encodeURIComponent(a.auth_index)}`).then(d=>{
     const acct=(d.accounts||[])[0]||d;
     if(d.error||acct&&acct.error) throw new Error(d.error||acct.error);
@@ -702,7 +753,10 @@ function fetchAccountCredits(a){
 function renderAccountCards(){
   const g=document.getElementById("grid");
   if(!g) return;
-  g.innerHTML=accountsForView(lastAccounts).map(card).join("");
+  const view=accountsForView(lastAccounts);
+  g.innerHTML=view.length?'<table class="log-table account-table"><thead><tr><th>账号</th><th>状态</th><th>积分余额</th><th>套餐</th><th>今日签到</th><th>操作</th></tr></thead><tbody>'+view.map(card).join("")+'</tbody></table>':'<div class="loading">'+(lastAccounts.length?"没有匹配的账号":"暂无 WorkBuddy 账号，请导入凭证")+'</div>';
+  renderExpiryNotice();
+  renderModelLocks();
   bindCardActions(g);
 }
 function updateOneCard(){
@@ -734,10 +788,10 @@ function updateOneCard(){
 }
 function filterRegion(region, btn){
   currentFilter=region||"all";
-  document.querySelectorAll(".ftag").forEach(b=>b.classList.remove("active"));
+  document.querySelectorAll("#filterBar .ftag[data-region]").forEach(b=>b.classList.remove("active"));
   if(btn) btn.classList.add("active");
   else{
-    document.querySelectorAll(".ftag").forEach(b=>{
+    document.querySelectorAll("#filterBar .ftag[data-region]").forEach(b=>{
       if(b.dataset.region===currentFilter) b.classList.add("active");
     });
   }
@@ -842,11 +896,12 @@ function renderSummary(accounts){
   const total=size>0?size:(remain+used);
   const pct=total>0?Math.round(used/total*100):0;
   let barColor="var(--ok)"; if(pct>60)barColor="var(--warn)"; if(pct>85)barColor="var(--err)";
-  const scopeLabel=currentFilter==="all"?"全部账号":(currentFilter==="global"?"Global 账号":"CN 账号");
+  const scopeLabel=currentFilter==="all"?"全部账号":(currentFilter==="global"?"Global 账号":currentFilter==="exhausted"?"耗尽账号":"CN 账号");
   const allTotal=allSize>0?allSize:(allRemain+allUsed);
   box.style.display="block";
   box.innerHTML=`
-    <div class="summary-hd">
+    <summary class="summary-title">积分汇总 · 点击展开</summary>
+    <div class="summary-hd" style="margin-top:12px">
       <div class="summary-title">用量汇总 · ${esc(scopeLabel)}</div>
       <div class="summary-meta">${scoped.length} 个账号 · 有数据 ${knownN} · 禁用 ${disabledN} · 耗尽 ${exhaustedN}</div>
     </div>
@@ -949,7 +1004,7 @@ function updateModelStatus(status){
   el.className="model-status "+state;
   el.textContent=(status&&status.message)||"模型目录尚未初始化";
 }
-async function load(force, btn){
+async function load(force, btn, withCredits=true){
   const manualRefresh=!!btn;
   const g=document.getElementById("grid");
   if(!getKey()){
@@ -972,11 +1027,12 @@ async function load(force, btn){
     updateModelStatus(d.model_status);
     if(force&&manualRefresh) loadEgressIP();
     document.getElementById("autoToggle").checked=!!d.checkin_auto;
+    document.getElementById("autoToggleSetting").checked=!!d.checkin_auto;
     document.getElementById("svtime").textContent="服务器时间 "+(d.server_time||"");
     if(d.error){
       g.innerHTML='<div class="loading">请求失败</div>';
       if(force) toast("刷新失败", "err", "请求失败");
-      return true;
+      return false;
     }
     const accounts=d.accounts||[];
     lastAccounts=accounts;
@@ -985,13 +1041,15 @@ async function load(force, btn){
     if(!accounts.length){
       g.innerHTML='<div class="loading">暂无 WorkBuddy 账号</div>';
       renderSummary([]);
+      renderExpiryNotice();
+      renderModelLocks();
       if(force) toast("数据已刷新", "warn", "暂无 WorkBuddy 账号");
       return true;
     }
     filterRegion(currentFilter, null);
     renderSummary(accounts);
     // Lazy-load credits for cards that don't have them yet.
-    lazyLoadCredits(accounts);
+    if(withCredits)lazyLoadCredits(accounts);
     if(force){
       const errN=accounts.filter(a=>a.error).length;
       const life=(d.lifecycle||[]).length;
@@ -1005,7 +1063,7 @@ async function load(force, btn){
   }catch(e){
     if(force) toast("刷新失败", "err", e.message||String(e));
     // 强制刷新失败时保留旧卡片，只 toast；首次加载仍写错误到 grid。
-    if(!force || !g.querySelector(".card")){
+    if(!force || !lastAccounts.length){
       g.innerHTML='<div class="loading">'+esc(e.message||String(e))+"</div>";
     }
     return false;
@@ -1016,6 +1074,7 @@ async function load(force, btn){
 function checkinResultToast(res, who){
   const name=res.nickname||who||"账号";
   if(res.error){toast(name+"：签到失败","err",res.error);return}
+  if(res.reason==="enterprise"){toast(name+"：企业版无需签到","warn",res.message||"");return}
   if(res.reason==="global"||(/国际版|不支持/.test(String(res.message||"")))){
     toast(name+"：国际版无需签到","warn",res.message||"请用领取专家加油包");return;
   }
@@ -1169,7 +1228,7 @@ async function claimTrialAll(btn){
   busy(btn,true);
   try{
     const d=await api("/accounts");
-    const accounts=(d.accounts||[]).filter(a=>(a.region||"cn")==="global"&&!a.trial_claimed);
+    const accounts=(d.accounts||[]).filter(a=>(a.region||"cn")==="global"&&!a.enterprise&&!a.trial_claimed);
     if(!accounts.length){toast("没有可领取的账号","warn");busy(btn,false);return;}
     let ok=0,fail=0,already=0;
     for(const a of accounts){
@@ -1311,17 +1370,24 @@ document.addEventListener("keydown",e=>{
   if(e.key=="Escape"&&document.getElementById("batchModal").classList.contains("show")) closeBatchModal();
 });
 /* ---------------- panel-migration: tabs / overview / batch / login wizard ---------------- */
+let currentTab="accounts";
 function switchTab(name, btn){
+  if(!["accounts","usage","packages","tasks","models","settings","logs"].includes(name))name="accounts";
+  currentTab=name;
+  if(taskPollTimer){clearTimeout(taskPollTimer);taskPollTimer=null}
+  history.replaceState(null,"",window.location.pathname+window.location.search+"#"+name);
   document.querySelectorAll(".tab-view").forEach(v=>v.classList.remove("show"));
   const view=document.getElementById("tab-"+name);
   if(view) view.classList.add("show");
   document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
   const active=btn||document.querySelector('.tab-btn[data-tab="'+name+'"]');
   if(active) active.classList.add("active");
+  document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-current",b===active?"page":"false"));
   const titles={accounts:["账号池","账号状态与积分概览"],usage:["用量","按模型、日期和客户端查看用量"],packages:["积分构成","账号余额、套餐和到期分布"],tasks:["任务中心","插件支持的自动任务与执行记录"],models:["模型与档位","可用模型、能力和推理档位"],settings:["配置","插件设置与 CPA 接入状态"],logs:["运行日志","聊天请求状态与延迟记录"]};
   const title=titles[name]||titles.accounts;
   document.getElementById("pageTitle").textContent=title[0];
   document.getElementById("pageSubtitle").textContent=title[1];
+  if(!getKey()){showAuth();return}
   if(name==="accounts") loadOverview();
   if(name==="usage") loadUsage();
   if(name==="logs") loadRequestLog();
@@ -1346,10 +1412,11 @@ async function loadOverview(btn){
       {k:"健康",v:d.healthy,c:"ok"},
       {k:"冷却",v:d.cooling,c:d.cooling?"warn":""},
       {k:"禁用",v:d.disabled,c:d.disabled?"err":""},
+      {k:"暂停选号",v:d.paused||0,c:d.paused?"warn":""},
       {k:"耗尽",v:d.exhausted,c:d.exhausted?"err":""},
       ciTile,
-      {k:"可用积分",v:(d.credits&&d.credits.remain!=null)?d.credits.remain:"-",c:""},
-      {k:"额度池",v:(d.credits&&d.credits.size!=null)?d.credits.size:"-",c:""},
+      {k:"可用积分",v:(d.credits&&d.credits.known>0)?d.credits.remain:"—",c:""},
+      {k:"额度池",v:(d.credits&&d.credits.known>0)?d.credits.size:"—",c:""},
     ];
     document.getElementById("ovTiles").innerHTML=tiles.map(t=>
       '<div class="ov-tile"><div class="k">'+esc(t.k)+'</div><div class="v '+t.c+'">'+esc(String(t.v))+'</div></div>').join("");
@@ -1440,37 +1507,34 @@ async function runBatch(kind,accounts){
   toast("批量任务完成","ok","成功 "+rows.filter(r=>r.state==="done").length+" / 失败 "+rows.filter(r=>r.state==="error").length);
   load(false);
 }
-/* Usage tab: credit spend by model/day/client from official billing rows
-   (GET /usage?days=N). Bars are dependency-free CSS; data stays aggregated. */
-function usageBarRows(rows, valFmt){
-  const max=Math.max.apply(null,rows.map(r=>r.credit))||1;
-  return rows.map(r=>
-    '<div class="ub-row"><span class="ub-label">'+esc(r.label)+'</span>'+
-    '<span class="ub-track"><span class="ub-bar" style="width:'+Math.max(1,Math.round(r.credit/max*100))+'%"></span></span>'+
-    '<span class="ub-val">'+valFmt(r)+'</span></div>').join("");
+/* Official credit billing, grouped without extra requests when changing dimension. */
+let usageData=null,usageDimension="model";
+function setUsageDimension(dim){
+  usageDimension=dim;
+  document.querySelectorAll("#usageDimensions button").forEach(b=>b.classList.toggle("active",b.dataset.dim===dim));
+  renderUsageDetail();
+}
+function renderUsageDetail(){
+  const d=usageData||{};
+  const dims={model:["模型",d.by_model||[],"model","requests"],client:["客户端",d.by_client||[],"client","requests"],day:["日期",d.by_day||[],"day","count"]};
+  const [label,data,key,count]=dims[usageDimension]||dims.model;
+  const sort=document.getElementById("usageSort").value;
+  const rows=data.slice().sort((a,b)=>sort==="name"?String(a[key]||"").localeCompare(String(b[key]||"")):Number(b[sort==="requests"?count:"credit"]||0)-Number(a[sort==="requests"?count:"credit"]||0));
+  document.getElementById("usageDetail").innerHTML=rows.length?'<table class="log-table"><thead><tr><th>'+label+'</th><th class="num">请求数</th><th class="num">积分消耗</th><th class="num">占比</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r[key]||"未知")+'</td><td class="num">'+esc(r[count]||0)+'</td><td class="num">'+Number(r.credit||0).toFixed(2)+'</td><td class="num">'+(d.total_credit>0?(Number(r.credit||0)/d.total_credit*100).toFixed(1)+"%":"—")+'</td></tr>').join("")+'</tbody></table>':"暂无账单数据";
 }
 async function loadUsage(btn){
-  if(btn) busy(btn,true);
+  if(btn)busy(btn,true);
   try{
-    const q=usageRangeQuery();
-    const d=await api("/usage?"+q);
-    if(d.error){toast("用量加载失败","err",d.error);return}
-    document.getElementById("usageMeta").textContent=d.accounts+" 个账号 · 共 "+d.total_count+" 次请求";
-    document.getElementById("usageTiles").innerHTML=
-      '<div class="ov-tile"><div class="k">积分消耗</div><div class="v">'+esc((d.total_credit||0).toFixed(2))+'</div></div>'+
-      '<div class="ov-tile"><div class="k">请求数</div><div class="v">'+esc(String(d.total_count||0))+'</div></div>'+
-      '<div class="ov-tile"><div class="k">模型数</div><div class="v">'+esc(String((d.by_model||[]).length))+'</div></div>'+
-      '<div class="ov-tile"><div class="k">统计天数</div><div class="v">'+esc(String((d.by_day||[]).length))+'</div></div>';
-    const models=(d.by_model||[]).slice(0,10).map(m=>({label:m.model||"unknown",credit:m.credit,count:m.requests}));
-    document.getElementById("usageByModel").innerHTML=models.length?
-      usageBarRows(models,r=>r.credit.toFixed(2)+' 积分 · '+r.count+' 次'):"无数据";
-    const clients=(d.by_client||[]).slice(0,10).map(c=>({label:c.client,credit:c.credit,count:c.requests}));
-    document.getElementById("usageByClient").innerHTML=clients.length?
-      usageBarRows(clients,r=>r.credit.toFixed(2)+' 积分 · '+r.count+' 次'):"无数据";
-    if((d.errors||[]).length) toast("部分账号数据缺失","warn",d.errors.join("；"));
-  }catch(e){
-    toast("用量加载失败","err",e.message||String(e));
-  }finally{ if(btn) busy(btn,false); }
+    const d=await api("/usage?"+usageRangeQuery()+(btn?"&refresh=1":""));
+    if(d.error)throw new Error(d.error);
+    usageData=d;
+    document.getElementById("usageMeta").textContent=d.accounts+" 个账号 · 最近 "+d.days+" 天 · 官方账单";
+    document.getElementById("usageTiles").innerHTML=[["积分消耗",Number(d.total_credit||0).toFixed(2)],["请求数",d.total_count||0],["模型数",(d.by_model||[]).length],["有用量天数",(d.by_day||[]).length]].map(([k,v])=>'<div class="ov-tile"><div class="k">'+esc(k)+'</div><div class="v">'+esc(v)+'</div></div>').join("");
+    renderUsageDetail();
+    document.getElementById("usageRecent").innerHTML=(d.recent||[]).length?'<table class="log-table"><thead><tr><th>时间</th><th>模型</th><th>客户端</th><th class="num">扣除积分</th></tr></thead><tbody>'+d.recent.map(r=>'<tr><td>'+esc(r.requestTimeMs?fmtTime(r.requestTimeMs):"—")+'</td><td>'+esc(r.model||"—")+'</td><td>'+esc(r.client||"—")+'</td><td class="num">'+Number(r.credit||0).toFixed(2)+'</td></tr>').join("")+'</tbody></table>':"暂无扣除记录";
+    if((d.errors||[]).length)toast("部分账号数据缺失","warn",d.errors.join("；"));
+  }catch(e){toast("用量加载失败","err",e.message||String(e));if(!usageData)document.getElementById("usageDetail").textContent="加载失败，请重试"}
+  finally{if(btn)busy(btn,false)}
 }
 function usageRangeQuery(){return "days="+encodeURIComponent(document.getElementById("usageDays").value||"7")}
 function fmtAxis(v){
@@ -1493,68 +1557,89 @@ async function loadLedger(btn){
   }catch(e){el.textContent="加载失败："+(e.message||"")}
   finally{ if(btn) busy(btn,false); }
 }
-let packagesLoaded=false;
+// Billing times without a zone are China wall-clock times, independent of browser zone.
+function renderModelLocks(){
+ const rows=lastAccounts.flatMap(a=>(a.pool_status?.rate_limited_models||[]).map(r=>({...r,account:a.nickname||a.label||a.auth_index})));
+ rows.sort((a,b)=>Date.parse(a.until)-Date.parse(b.until));
+ document.getElementById("modelLocks").innerHTML=rows.length?'<table class="log-table"><thead><tr><th>模型</th><th>账号</th><th>预计恢复</th><th>原因</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.model)+'</td><td>'+esc(r.account)+'</td><td>'+esc(fmtTime(r.until))+'</td><td>'+esc(r.reason||"模型限流")+'</td></tr>').join("")+'</tbody></table>':"当前没有插件记录的模型限流";
+}
+function packageExpiryTime(value){
+  let text=String(value||"").trim().replace(" ","T");
+  if(!text)return null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(text))text+="T00:00:00";
+  if(!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text))text+="+08:00";
+  const n=Date.parse(text);return Number.isFinite(n)?n:null;
+}
+function packageRows(accounts,now=Date.now()){
+  return accounts.flatMap((a,index)=>(a.credits?.packages||[]).map(p=>{
+    const end=packageExpiryTime(p.cycle_end);
+    return {a,p,index,end,days:end===null?null:Math.ceil((end-now)/86400000),expired:end!==null&&end<=now};
+  }));
+}
+function packageDate(end){return new Date(end).toLocaleDateString("zh-CN",{timeZone:"Asia/Shanghai"})}
+function packageColor(index){return ["#5b7cfa","#14b8a6","#f59e0b","#a78bfa","#ec4899","#38bdf8"][index%6]}
+function packageEndLabel(r){return r.end===null?"未提供到期日":r.expired?"已过期":r.days<=1?"24 小时内":r.days+" 天后"}
+function renderExpiryNotice(){
+  const accounts=lastAccounts||[],rows=packageRows(accounts);
+  const list=accounts.map(a=>{
+    const packs=rows.filter(r=>r.a===a&&!r.expired&&r.end!==null&&Number(r.p.remain)>0).sort((a,b)=>a.end-b.end);
+    const first=packs[0];
+    const near=first?packs.filter(r=>packageDate(r.end)===packageDate(first.end)):[];
+    return {a,first,remain:near.reduce((n,r)=>n+Number(r.p.remain),0)};
+  }).sort((a,b)=>(a.first?.end??Infinity)-(b.first?.end??Infinity));
+  document.getElementById("expiryNotice").innerHTML=list.length?list.map(({a,first,remain})=>{
+    const name=esc(a.nickname||a.label||a.auth_index);
+    const msg=!a.credits?(a.error?"积分查询失败，可刷新重试":a.disabled?"已停用，暂无积分快照":"尚未查询，点击刷新获取积分"):!first?"暂无有到期日期的可用套餐":
+      '<span class="'+(first.days<=3?"status-err":first.days<=7?"expiry-warn":"")+'">最近 '+esc(packageDate(first.end))+' 到期 · '+esc(remain.toLocaleString())+' 积分（'+packageEndLabel(first)+'）</span>'+(!a.disabled?'<span class="detail-line">该批到期前日均需耗约 '+Math.ceil(remain/Math.max(1,(first.end-Date.now())/86400000)).toLocaleString()+' 积分</span>':'<span class="detail-line">账号已停用</span>');
+    return '<div class="expiry-notice"><strong>'+name+'</strong><div>'+msg+'</div></div>';
+  }).join(""):"暂无账号";
+}
+let compositionFlight=null;
 async function loadCreditComposition(btn){
-  if(btn) busy(btn,true);
-  try{
-    if(btn){
-      if(!await load(true)) return;
-      packagesLoaded=true;
-    }else if(!packagesLoaded){
-      if(!lastAccounts.length&&!await load(false)) return;
+  if(compositionFlight)return compositionFlight;
+  if(btn)busy(btn,true);
+  compositionFlight=(async()=>{
+    try{
+      if(!await load(!!btn))return;
+      document.getElementById("packagesMeta").textContent="正在加载各账号积分…";
       await lazyLoadCredits(lastAccounts);
-      packagesLoaded=true;
-    }
-    renderCreditComposition();
-    await loadLedger();
-  }catch(e){toast("积分构成加载失败","err",e.message||String(e))}
-  finally{if(btn) busy(btn,false)}
+      renderCreditComposition();
+      await loadLedger();
+    }catch(e){toast("积分构成加载失败","err",e.message||String(e))}
+    finally{if(btn)busy(btn,false);compositionFlight=null}
+  })();
+  return compositionFlight;
 }
 function renderCreditComposition(){
-  const accounts=lastAccounts||[];
-  const known=accounts.filter(a=>a.credits);
-  const totals=known.reduce((s,a)=>{
-    s.remain+=Number(a.credits.total_remain)||0;
-    s.used+=Number(a.credits.total_used)||0;
-    s.size+=Number(a.credits.total_size)||0;
-    s.packs+=(a.credits.packages||[]).length;
-    return s;
-  },{remain:0,used:0,size:0,packs:0});
-  document.getElementById("packagesTiles").innerHTML=[
-    ["可用积分",totals.remain], ["已用积分",totals.used], ["额度总量",totals.size], ["账号 / 套餐",known.length+" / "+totals.packs]
-  ].map(([k,v])=>'<div class="ov-tile"><div class="k">'+esc(k)+'</div><div class="v">'+esc(typeof v==="number"?v.toLocaleString():String(v))+'</div></div>').join("");
-  const rows=[];
-  accounts.forEach(a=>(a.credits&&a.credits.packages||[]).forEach(p=>{
-    const end=Date.parse(String(p.cycle_end||"").replace(" ","T"));
-    const days=Number.isNaN(end)?null:Math.ceil((end-Date.now())/86400000);
-    rows.push({a,p,end,days,expiry:days===null?"未提供":days<0?"已过期":days+" 天后"});
-  }));
-  rows.sort((a,b)=>{
-    if(a.days===null&&b.days!==null)return 1;
-    if(b.days===null&&a.days!==null)return -1;
-    if(a.end!==b.end)return a.end-b.end;
-    return String(a.a.nickname||a.a.auth_index).localeCompare(String(b.a.nickname||b.a.auth_index));
-  });
+  const accounts=lastAccounts||[],known=accounts.filter(a=>a.credits);
+  const rows=packageRows(accounts),active=rows.filter(r=>!r.expired&&Number(r.p.remain)>0);
+  const totals=known.reduce((s,a)=>{s.remain+=Number(a.credits.total_remain)||0;s.used+=Number(a.credits.total_used)||0;return s},{remain:0,used:0});
+  document.getElementById("packagesTiles").innerHTML=[["快照余额",totals.remain.toLocaleString()],["已用积分",totals.used.toLocaleString()],["有积分数据的账号",known.length+" / "+accounts.length],["未用完的有效包",active.length]].map(([k,v])=>'<div class="ov-tile"><div class="k">'+k+'</div><div class="v">'+esc(v)+'</div></div>').join("");
   const groups=new Map();
-  rows.forEach(r=>{
-    const key=r.days===null?"未提供到期日":r.days<0?"已过期":new Date(r.end).toLocaleDateString();
-    const g=groups.get(key)||{name:key,days:r.days,remain:0,count:0};
-    g.remain+=Number(r.p.remain)||0;g.count++;groups.set(key,g);
+  active.forEach(r=>{
+    const key=r.end===null?"未提供到期日":packageDate(r.end),g=groups.get(key)||{name:key,end:r.end,parts:new Map(),remain:0};
+    const amount=Number(r.p.remain);g.parts.set(r.index,(g.parts.get(r.index)||0)+amount);g.remain+=amount;groups.set(key,g);
   });
-  const expiry=[...groups.values()].sort((a,b)=>{
-    if(a.days===null&&b.days!==null)return 1;
-    if(b.days===null&&a.days!==null)return -1;
-    return (a.days??0)-(b.days??0);
-  });
+  const expiry=[...groups.values()].sort((a,b)=>(a.end??Infinity)-(b.end??Infinity));
   const maxRemain=Math.max(1,...expiry.map(g=>g.remain));
-  document.getElementById("packageExpiry").innerHTML=expiry.length?expiry.map(g=>
-    '<div class="credit-row"><strong>'+esc(g.name)+'</strong><span class="bar"><i style="width:'+Math.max(1,Math.round(g.remain/maxRemain*100))+'%"></i></span><span class="credit-meta">'+esc(g.remain.toLocaleString())+' 积分 · '+g.count+' 包</span></div>'
-  ).join(""):"暂无套餐数据；点击“刷新构成”查询各账号余额。";
-  document.getElementById("packageTable").innerHTML=rows.length?'<table class="log-table"><thead><tr><th>到期</th><th>账号</th><th>套餐</th><th class="num">可用</th><th class="num">已用 / 总量</th></tr></thead><tbody>'+rows.map(r=>
-    '<tr><td>'+esc(r.expiry)+'</td><td>'+esc(r.a.nickname||r.a.label||r.a.auth_index)+'</td><td>'+esc(r.p.name||"套餐")+'</td><td class="num">'+esc(Number(r.p.remain||0).toLocaleString())+'</td><td class="num">'+esc(Number(r.p.used||0).toLocaleString())+' / '+esc(Number(r.p.size||0).toLocaleString())+'</td></tr>'
-  ).join("")+'</tbody></table>':"暂无套餐数据。";
+  document.getElementById("packageExpiry").innerHTML=expiry.length?expiry.map(g=>'<div class="credit-row"><strong>'+esc(g.name)+'</strong><div class="mixbar" style="width:'+g.remain/maxRemain*100+'%">'+[...g.parts].map(([i,n])=>'<i style="width:'+n/g.remain*100+'%;background:'+packageColor(i)+'" title="'+esc(accounts[i].nickname||accounts[i].label||accounts[i].auth_index)+' · '+n.toLocaleString()+' 积分"></i>').join("")+'</div><span class="credit-meta">'+g.remain.toLocaleString()+' 积分</span></div>').join("")+'<div class="chart-legend">'+accounts.filter(a=>a.credits).map(a=>'<span><i style="background:'+packageColor(accounts.indexOf(a))+'"></i>'+esc(a.nickname||a.label||a.auth_index)+'</span>').join("")+'</div>':'暂无有余额的有效套餐';
+  document.getElementById("packageAccounts").innerHTML=accounts.map((a,i)=>{
+    const packs=active.filter(r=>r.a===a),sources=new Map();
+    packs.forEach(r=>sources.set(r.p.name||"套餐",(sources.get(r.p.name||"套餐")||0)+Number(r.p.remain)));
+    const sum=packs.reduce((n,r)=>n+Number(r.p.remain),0);
+    return '<div class="package-account"><strong>'+esc(a.nickname||a.label||a.auth_index)+'</strong><span class="hint">'+esc(a.region||"cn")+(a.disabled?" · 已停用":"")+'</span><div class="balance">'+(a.credits?Number(a.credits.total_remain||0).toLocaleString():"—")+'</div>'+(!a.credits?'<div class="hint">'+esc(a.error||"暂无积分快照")+'</div>':'<div class="hint">'+packs.length+' 个有效包</div><div class="mixbar">'+packs.map(r=>'<i title="'+esc(r.p.name||"套餐")+' · '+packageEndLabel(r)+'" style="width:'+(sum?Number(r.p.remain)/sum*100:0)+'%;background:'+packageColor(i)+';opacity:'+(r.days===null?0.35:Math.max(.25,1-r.days/60))+'"></i>').join("")+'</div><div class="hint">'+[...sources].map(([name,n])=>esc(name)+' · '+n.toLocaleString()).join('<br>')+'</div>')+'</div>';
+  }).join("");
+  const sort=document.getElementById("packageSort").value;
+  const rowHTML=r=>'<tr><td>'+esc(r.p.name||"套餐")+'</td><td class="num">'+Number(r.p.remain||0).toLocaleString()+'</td><td class="num">'+Number(r.p.used||0).toLocaleString()+' / '+Number(r.p.size||0).toLocaleString()+'</td><td title="'+esc(r.p.cycle_end||"")+'">'+(r.end===null?"—":esc(packageDate(r.end)))+'<div class="detail-line">'+packageEndLabel(r)+'</div></td></tr>';
+  document.getElementById("packageTable").innerHTML=accounts.map(a=>{
+    const list=rows.filter(r=>r.a===a).sort((a,b)=>sort==="size"?Number(b.p.size||0)-Number(a.p.size||0):(a.end??Infinity)-(b.end??Infinity));
+    const live=list.filter(r=>!r.expired&&Number(r.p.remain)>0),other=list.filter(r=>r.expired||Number(r.p.remain)<=0);
+    if(!list.length)return "";
+    const table=rs=>'<div class="table-scroll"><table class="log-table"><thead><tr><th>套餐 / 来源</th><th class="num">余额</th><th class="num">已用 / 面额</th><th>到期</th></tr></thead><tbody>'+rs.map(rowHTML).join("")+'</tbody></table></div>';
+    return '<details class="package-detail" open><summary>'+esc(a.nickname||a.label||a.auth_index)+' · '+live.length+' 个有效包</summary>'+table(live.slice(0,5))+(live.length>5?'<details class="package-detail"><summary>其余 '+(live.length-5)+' 个有效包</summary>'+table(live.slice(5))+'</details>':"")+(other.length?'<details class="package-detail"><summary>已用完 / 已过期 '+other.length+' 个包</summary>'+table(other)+'</details>':"")+'</details>';
+  }).join("")||"暂无套餐明细";
   const fetched=known.map(a=>a.credits.fetched_at).filter(Boolean).sort().at(-1);
-  document.getElementById("packagesMeta").textContent=known.length+" 个账号有积分数据"+(fetched?" · 更新于 "+fmtTime(fetched):"");
+  document.getElementById("packagesMeta").textContent=known.length+" / "+accounts.length+" 个账号有积分快照"+(fetched?" · "+fmtTime(fetched):"");
 }
 /* Request log (GET /requests) — recorded by the plugin's executor hook. */
 let requestLogCache=[];
@@ -1578,27 +1663,36 @@ async function loadRequestLog(btn){
   }catch(e){toast("日志加载失败","err",e.message||String(e))}
   finally{ if(btn) busy(btn,false); }
 }
+function matchesWords(query,values){const text=values.join(" ").toLowerCase();return String(query||"").trim().toLowerCase().split(/\s+/).every(word=>text.includes(word))}
 function renderRequestLog(){
   const el=document.getElementById("logsTable");
   const f=document.getElementById("logsFilter").value;
-  let rows=requestLogCache;
+  let rows=requestLogCache.filter(r=>matchesWords(document.getElementById("logsSearch").value,[r.model,r.alias,r.uid8,r.error]));
   if(f==="failed") rows=rows.filter(r=>r.failed);
   if(f==="ok") rows=rows.filter(r=>!r.failed);
   if(!rows.length){el.textContent=requestLogCache.length?"无匹配记录":"暂无记录（发起一次对话后出现）";return}
-  el.innerHTML='<table class="log-table"><thead><tr><th>时间</th><th>模型</th><th>账号</th><th class="num">状态</th><th class="num">首字</th><th class="num">耗时</th><th class="num">输出 token</th></tr></thead><tbody>'+
+  el.innerHTML='<table class="log-table"><thead><tr><th>时间</th><th>模型</th><th>账号</th><th class="num">状态</th><th class="num">首字</th><th class="num">耗时</th><th class="num">输入 / 输出</th><th class="num">输出速率</th></tr></thead><tbody>'+
     rows.map(r=>{
       const code=r.status||0;
       const cls=r.failed?"status-err":"status-ok";
-      return '<tr><td>'+esc(fmtTime(r.time))+'</td><td>'+esc(r.model||"-")+'</td>'+
+      const model=esc(r.model||"-")+(r.alias&&r.alias!==r.model?'<div class="dim">'+esc(r.alias)+'</div>':"");
+      const failure=r.error?'<details><summary>错误详情</summary><div class="dim">'+esc(r.error)+'</div></details>':"";
+      return '<tr><td>'+esc(fmtTime(r.time))+'</td><td>'+model+failure+'</td>'+
         '<td>'+esc(r.uid8||"-")+'</td>'+
         '<td class="num '+cls+'">'+esc(code?String(code):(r.failed?"ERR":"200"))+'</td>'+
         '<td class="num">'+esc(r.ttfb_ms>0?r.ttfb_ms+"ms":"-")+'</td>'+
         '<td class="num">'+esc((r.latency_ms||0)+"ms")+'</td>'+
-        '<td class="num">'+esc(String(r.output_tokens||0))+'</td></tr>';
+        '<td class="num">'+esc(r.input_tokens||0)+' / '+esc(r.output_tokens||0)+'</td><td class="num">'+requestRate(r)+'</td></tr>';
     }).join("")+'</tbody></table>';
 }
+// Avoid inflated rates when subtracting TTFB leaves a tiny generation window.
+function requestRate(row){
+  const elapsed=Number(row.latency_ms)||0,ttfb=Number(row.ttfb_ms)||0;
+  const generation=elapsed>ttfb&&elapsed-ttfb>=200?elapsed-ttfb:elapsed;
+  return Number(row.output_tokens)>0&&generation>0?(row.output_tokens/generation*1000).toFixed(1)+" tok/s":"—";
+}
 /* Task history (GET /tasks). */
-let taskLogCache=[];
+let taskLogCache=[],taskPollTimer=null;
 async function loadTaskLog(btn){
   if(btn) busy(btn,true);
   try{
@@ -1615,17 +1709,25 @@ async function loadTaskLog(btn){
       '<div class="ov-tile"><div class="k">失败</div><div class="v '+(taskLogCache.length-ok?"err":"")+'">'+esc(String(taskLogCache.length-ok))+'</div></div>'+
       '<div class="ov-tile"><div class="k">累计积分</div><div class="v '+(totalCredit>0?"ok":"")+'">'+(totalCredit>0?"+"+esc(String(totalCredit)):"-")+'</div></div>'+
       '<div class="ov-tile"><div class="k">类型数</div><div class="v">'+esc(String(Object.keys(byTask).length))+'</div></div>';
-    document.getElementById("tasksMeta").textContent="累计 "+(d.tasks||[]).length+" 条";
-    document.getElementById("tasksTable").innerHTML=taskLogCache.length?
-      ('<table class="log-table"><thead><tr><th>时间</th><th>任务</th><th>账号</th><th class="num">结果</th><th class="num">积分</th><th>说明</th></tr></thead><tbody>'+
-      taskLogCache.map(t=>'<tr><td>'+esc(fmtTime(t.time))+'</td><td>'+esc(taskLabel(t.task))+'</td>'+
-      '<td>'+esc(t.account||"-")+'</td>'+
-      '<td class="num '+(t.ok?"status-ok":"status-err")+'">'+esc(t.ok?"成功":"失败")+'</td>'+
-      '<td class="num '+((t.credit||0)>0?"status-ok":"")+'">'+((t.credit||0)>0?"+"+esc(String(t.credit)):"-")+'</td>'+
-      '<td>'+esc(t.message||"")+'</td></tr>').join("")+'</tbody></table>'):"暂无记录";
+    const running=!!(d.activity_running||d.travel_running);
+    document.getElementById("tasksMeta").textContent=taskLogCache.length+" 条记录"+(running?" · 任务执行中，自动更新":"");
+    for(const [kind,id] of [["activity","taskActivity"],["travel","taskTravel"]]) {
+     const button=document.getElementById(id);
+     button.disabled=!!d[kind+"_running"]||d[kind+"_enabled"]===false;
+     button.textContent=d[kind+"_running"]?"执行中…":d[kind+"_enabled"]===false?"未启用":"运行任务";
+    }
+    if(taskPollTimer)clearTimeout(taskPollTimer);
+    if(running&&currentTab==="tasks"&&!document.hidden)taskPollTimer=setTimeout(()=>loadTaskLog(),5000);
+    renderTaskLog();
   }catch(e){toast("任务加载失败","err",e.message||String(e))}
-  finally{ if(btn) busy(btn,false); }
+  finally{if(btn)busy(btn,false)}
 }
+function renderTaskLog(){
+  const query=document.getElementById("tasksSearch").value,filter=document.getElementById("tasksFilter").value;
+  const rows=taskLogCache.filter(t=>(filter!=="ok"||t.ok)&&(filter!=="failed"||!t.ok)&&matchesWords(query,[t.task,taskLabel(t.task),t.account,t.message]));
+  document.getElementById("tasksTable").innerHTML=rows.length?'<table class="log-table"><thead><tr><th>时间</th><th>任务</th><th>账号</th><th>结果</th><th class="num">积分</th><th>说明</th></tr></thead><tbody>'+rows.map(t=>'<tr><td>'+esc(fmtTime(t.time))+'</td><td>'+esc(taskLabel(t.task))+'</td><td>'+esc(t.account||"—")+'</td><td class="'+(t.ok?"status-ok":"status-err")+'">'+(t.ok?"成功":"失败")+'</td><td class="num">'+(t.credit>0?"+"+esc(t.credit):"—")+'</td><td>'+esc(t.message||"")+'</td></tr>').join("")+'</tbody></table>':taskLogCache.length?"没有匹配的任务":"暂无任务记录";
+}
+
 async function runPluginTask(kind,btn){
   const labels={activity:"活跃地图",travel:"猫猫旅行"};
   const label=labels[kind];
@@ -1656,6 +1758,10 @@ async function loadModelCenter(btn){
     const d=await api("/models");
     if(d.error){toast("模型加载失败","err",d.error);return}
     modelCenterCache=d.models||[];
+    const select=document.getElementById("modelsEffort"),selected=select.value;
+    const efforts=[...new Set(modelCenterCache.flatMap(m=>m.efforts||[]))];
+    select.innerHTML='<option value="">全部档位</option>'+efforts.map(e=>'<option value="'+esc(e)+'">'+esc(e)+'</option>').join("");
+    select.value=efforts.includes(selected)?selected:"";
     if((d.errors||[]).length) toast("部分账号模型拉取失败","warn",d.errors.join("；"));
     renderModelCenter();
   }catch(e){toast("模型加载失败","err",e.message||String(e))}
@@ -1664,14 +1770,20 @@ async function loadModelCenter(btn){
 function renderModelCenter(){
   const el=document.getElementById("modelsTable");
   const q=(document.getElementById("modelsSearch").value||"").trim().toLowerCase();
+  const realm=document.getElementById("modelsRealm").value,cap=document.getElementById("modelsCapability").value,effort=document.getElementById("modelsEffort").value;
   const rows=modelCenterCache.filter(m=>{
+    if(realm&&m.realm!==realm||cap&&!m[cap]||effort&&!(m.efforts||[]).includes(effort))return false;
     if(!q)return true;
     const terms=[m.id,m.name,m.vendor,m.description,m.realm,(m.tags||[]).join(" "),(m.efforts||[]).join(" "),
       m.is_default?"默认":"",m.supports_reasoning?"推理 思考":"",m.supports_tools?"工具 调用":"",m.supports_images?"视觉 图片":""];
     const text=terms.join(" ").toLowerCase();
     return q.split(/\s+/).every(term=>text.includes(term));
   });
-  document.getElementById("modelsMeta").textContent=q&&rows.length!==modelCenterCache.length
+  const sort=document.getElementById("modelsSort").value;
+  if(sort==="id")rows.sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+  else if(sort==="credits")rows.sort((a,b)=>modelRate(a.credits)-modelRate(b.credits));
+  else if(sort)rows.sort((a,b)=>(Number(b[sort])||0)-(Number(a[sort])||0));
+  document.getElementById("modelsMeta").textContent=rows.length!==modelCenterCache.length
     ?rows.length+" / "+modelCenterCache.length+" 个模型":"共 "+modelCenterCache.length+" 个模型";
   if(!rows.length){el.textContent=modelCenterCache.length?"无匹配模型":"暂无模型（账号模型目录未就绪）";return}
   el.innerHTML='<div class="model-table-wrap"><table class="log-table model-table"><thead><tr><th>模型</th><th class="num">积分倍率</th><th>默认档</th><th>支持档位</th><th class="num">上下文</th><th class="num">最大输出</th></tr></thead><tbody>'+
@@ -1689,12 +1801,22 @@ function renderModelCenter(){
       return '<tr><td title="'+esc(m.description||"")+'"><div class="model-id">'+esc(m.id||"-")+'</div>'+
         (caption?'<div class="model-name">'+esc(caption)+'</div>':"")+
         (tags.length?'<div class="model-tags">'+tags.join("")+'</div>':"")+'</td>'+
-        '<td class="num">'+esc(m.credits||"-")+'</td>'+
+        '<td class="num">'+esc(m.credits??"—")+'</td>'+
         '<td>'+esc(m.default_effort||"-")+'</td>'+
         '<td><div class="model-tags">'+efforts+'</div></td>'+
         '<td class="num">'+(m.context_window?esc(fmtAxis(m.context_window)):"—")+'</td>'+
         '<td class="num">'+(m.max_tokens?esc(fmtAxis(m.max_tokens)):"—")+'</td></tr>';
     }).join("")+'</tbody></table></div>';
+}
+function modelRate(value){
+  const raw=String(value??"").trim();
+  if(!raw)return Infinity;
+  const n=Number(raw.replace(/^[x×]\s*|\s*[x×倍]$/gi,""));
+  return Number.isFinite(n)?n:Infinity;
+}
+function resetModelFilters(){
+  ["modelsSearch","modelsRealm","modelsCapability","modelsEffort","modelsSort"].forEach(id=>document.getElementById(id).value="");
+  renderModelCenter();
 }
 /* Credit expiry countdown (A1): package cycle_end → days left, colour-coded.
    Rendered from data the account cards already carry — no extra fetch. */
@@ -1702,9 +1824,9 @@ function expiryHTML(cr){
   if(!cr||!(cr.packages||[]).length) return "";
   const now=Date.now();
   const items=cr.packages.map((p,index)=>{
-    const end=Date.parse(String(p.cycle_end||"").replace(" ","T"));
+    const end=packageExpiryTime(p.cycle_end);
     let label="-", cls="expiry-mut", days=null;
-    if(!isNaN(end)){
+    if(end!==null){
       days=Math.ceil((end-now)/86400000);
       if(days<0){label="已过期";cls="expiry-err"}
       else if(days<=3){label=days+" 天";cls="expiry-err"}
@@ -1759,7 +1881,8 @@ async function loadKeepaliveStatus(){
   if(!el||!getKey()) return;
   try{
     const d=await api("/keepalive/status");
-    el.textContent=d.summary||JSON.stringify(d);
+    const rows=d.last_run?.results||[],when=d.last_run?.when;
+    el.textContent=(d.enabled?"自动保活已开启":"自动保活已关闭")+" · 每日 "+(d.schedule||[]).map(h=>String(h).padStart(2,"0")+":00").join(" / ")+(when?" · 上次 "+fmtTime(when)+" · 已刷新 "+rows.filter(r=>r.status==="refreshed").length+" / "+rows.length+" 个账号":" · 暂无执行记录");
   }catch(e){el.textContent="状态不可用："+(e.message||"")}
 }
 async function runKeepaliveNow(btn){
@@ -1787,12 +1910,13 @@ function initSettings(){
 if(window.__wbThemeSync)window.__wbThemeSync();
 async function loadInitial(){
   if(getKey()){
-    if(await load(false)) loadEgressIP();
-    loadOverview();
+    if(await load(false,null,false))loadEgressIP();
+    switchTab(window.location.hash.slice(1)||"accounts");
   }else{
-    showAuth();
+    switchTab(window.location.hash.slice(1)||"accounts");
   }
 }
+window.addEventListener("hashchange",()=>switchTab(window.location.hash.slice(1)));
 loadInitial();
 </script>
 </body>

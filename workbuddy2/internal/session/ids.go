@@ -229,3 +229,36 @@ func strOrEmpty(v any) string {
 	s, _ := v.(string)
 	return s
 }
+
+// CacheConversationID derives a cache namespace when a client omits its dialog ID.
+// Only cache reuse changes; CPA still chooses accounts. First-user signatures stay
+// stable as later turns append to the history; no process-wide per-account fallback.
+func CacheConversationID(body []byte) string {
+	if id := ResolveConversationID(body); id != "" {
+		return id
+	}
+	var obj struct {
+		Messages []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if json.Unmarshal(body, &obj) != nil {
+		return ""
+	}
+	system, user := "", ""
+	for _, m := range obj.Messages {
+		if (m.Role == "system" || m.Role == "developer") && system == "" {
+			system = contentSignature(m.Content)
+		}
+		if m.Role == "user" {
+			user = contentSignature(m.Content)
+			break
+		}
+	}
+	if user == "" {
+		return ""
+	}
+	digest := sha256.Sum256([]byte(system + "\x00" + user))
+	return "cache-" + hex.EncodeToString(digest[:16])
+}

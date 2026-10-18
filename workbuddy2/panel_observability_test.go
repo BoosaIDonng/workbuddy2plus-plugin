@@ -31,15 +31,15 @@ func TestPanelObservabilityContracts(t *testing.T) {
 		{name: "models loader", want: `api("/models")`},
 		{name: "account toggle call", want: `api("/account/toggle"`},
 
-		// Custom usage range (B3).
-		{name: "range mode select", want: `id="usageRangeMode"`},
-		{name: "custom from date", want: `id="usageFrom"`},
-		{name: "custom to date", want: `id="usageTo"`},
+		// The billing API supports recent-day ranges; dimensions switch locally.
+		{name: "billing days", want: `id="usageDays"`},
+		{name: "usage dimensions", want: `id="usageDimensions"`},
+		{name: "recent billing rows", want: `id="usageRecent"`},
 
 		// Credit expiry countdown (A1).
 		{name: "expiry renderer", want: `function expiryHTML(cr)`},
 		{name: "expiry uses cycle_end", want: `p.cycle_end`},
-		{name: "expiry wired into card", want: `${expiryHTML(cr)}`},
+		{name: "expiry wired into card", want: `expiryHTML(cr)+checkinHTML(a)`},
 
 		// Account shelf/restore (A6).
 		{name: "toggle button", want: `data-action="toggle"`},

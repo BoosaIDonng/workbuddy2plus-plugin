@@ -743,7 +743,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 		reconcileAfterExecutorError(req.AuthID, statusCode, string(payload))
 		return errorEnvelopeWithStatus("http_error", fmt.Sprintf("upstream %d: %s", statusCode, truncateRedacted(string(payload), 200)), statusCode), nil
 	}
-	completion, err := wbAggregate(reader, req.Model)
+	completion, err := wbAggregate(reader, req.Model, body)
 	if err != nil {
 		publishUsage(req.Model, upstreamModel, authUID, started, usage.Detail{}, true, 0, err.Error())
 		return nil, err

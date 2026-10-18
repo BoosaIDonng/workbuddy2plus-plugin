@@ -71,7 +71,7 @@ func wbPrepareBody(payload, original []byte, sa *storedAuth, a *wauth.Auth, upst
 		return src
 	}
 	src = rewriteModelInBody(src, upstreamModel)
-	convID := wsession.ResolveConversationID(src)
+	convID := wsession.CacheConversationID(src)
 	src = wbClient.PrepareChatBodyForRealm(src, a, convID)
 	return applyDesensitizeBody(src)
 }
@@ -118,10 +118,14 @@ func wbApplyChatHeaders(req *http.Request, a *wauth.Auth, body []byte) {
 // vendored aggregator (truncated tool_call dropping on length/EOF, usage
 // total synthesis, missing-index tool call merge), with the plugin's
 // model/id fallbacks for streams that omit them.
-func wbAggregate(r io.Reader, model string) ([]byte, error) {
+func wbAggregate(r io.Reader, model string, requestBodies ...[]byte) ([]byte, error) {
 	result, err := wupstream.Aggregate(r)
 	if err != nil {
 		return nil, err
+	}
+	if len(requestBodies) > 0 {
+		allowed := wupstream.ToolNameAllowlist(requestBodies[0])
+		wupstream.RepairAggregatedResponse(result, allowed, len(allowed) == 0)
 	}
 	if m, _ := result["model"].(string); m == "" {
 		result["model"] = model

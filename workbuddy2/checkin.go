@@ -153,8 +153,8 @@ func processAutoCheckinAccount(f pluginapi.HostAuthFileEntry, doCheckin bool) {
 		if err != nil {
 			return
 		}
-		if isGlobalDomain(sa.Auth.Domain) {
-			// Global: never check-in or auto-claim trial. Lifecycle only.
+		if isGlobalDomain(sa.Auth.Domain) || strings.TrimSpace(sa.Account.EnterpriseID) != "" {
+			// Global and enterprise accounts skip personal check-in/trial. Lifecycle only.
 			// Invalidate cache (copy entry, set credits=nil, keep plan/checkin).
 			if v, ok := accountCache.Load(f.ID); ok {
 				if e, ok2 := v.(*accountCacheEntry); ok2 {
@@ -366,6 +366,13 @@ func checkinOneAccountWithCallback(f pluginapi.HostAuthFileEntry, callbackID str
 		return out
 	}
 	out["nickname"] = sa.Account.Nickname
+	if strings.TrimSpace(sa.Account.EnterpriseID) != "" {
+		out["success"] = false
+		out["skipped"] = true
+		out["reason"] = "enterprise"
+		out["message"] = "企业版账号不支持个人签到"
+		return out
+	}
 
 	if isGlobalDomain(sa.Auth.Domain) {
 		out["success"] = false

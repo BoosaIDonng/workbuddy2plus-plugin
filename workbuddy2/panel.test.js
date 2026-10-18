@@ -33,6 +33,7 @@ function fakeElement() {
       return queries.get(selector);
     },
     querySelectorAll() { return []; },
+    setAttribute(name,value) { this[name]=String(value); },
     addEventListener() {},
     focus() {},
     remove() {
@@ -86,6 +87,7 @@ function loadPanel(overrides = {}) {
     Uint8Array,
     btoa(value) { return Buffer.from(value, "binary").toString("base64"); },
     atob(value) { return Buffer.from(value, "base64").toString("binary"); },
+    addEventListener() {},
     requestAnimationFrame(fn) { fn(); },
     setTimeout(fn) { fn(); return 1; },
     clearTimeout() {},
@@ -490,4 +492,65 @@ test("partial import all failure keeps modal open and sanitizes long names", asy
   await context.importAuth({ dataset: {}, innerHTML: "导入", disabled: false });
   assert.equal(modal.classList.contains("show"), true);
   assert.equal(toastDetail, "0 成功 / 1 失败 · " + "x".repeat(120) + "：导入失败");
+});
+
+test("expiry uses China time, exact expiry, and keeps unknown dates unknown", () => {
+  const {context}=loadPanel();
+  assert.equal(context.packageExpiryTime("2026-10-18 12:00:00"), Date.parse("2026-10-18T04:00:00Z"));
+  assert.equal(context.packageExpiryTime("bad date"),null);
+  const now=Date.parse("2026-10-18T04:00:00Z");
+  const rows=context.packageRows([{credits:{packages:[{cycle_end:"2026-10-18 11:59:00",remain:20},{cycle_end:"2026-10-18 12:01:00",remain:30},{remain:40}]}}],now);
+  assert.equal(rows[0].expired,true);
+  assert.equal(rows[1].expired,false);
+  assert.equal(rows[2].end,null);
+});
+
+test("model filters combine realm, capability and tier without losing zero pricing",async()=>{
+  const {context,document,elements}=loadPanel();
+  context.api=async()=>({models:[{id:"cn-tool",realm:"cn",supports_tools:true,efforts:["high"],credits:"0"},{id:"global-tool",realm:"global",supports_tools:true,efforts:["high"],credits:"x0.5"}]});
+  await context.loadModelCenter();
+  document.getElementById("modelsRealm").value="cn";
+  document.getElementById("modelsCapability").value="supports_tools";
+  document.getElementById("modelsEffort").value="high";
+  context.renderModelCenter();
+  const html=elements.get("modelsTable").innerHTML;
+  assert.match(html,/cn-tool/);assert.doesNotMatch(html,/global-tool/);
+  assert.match(html,/>0<\/td>/);
+  assert.equal(context.modelRate("x0.5"),0.5);
+});
+
+test("empty and zero account credits are distinct and upstream text is escaped",()=>{
+  const {context}=loadPanel();
+  assert.match(context.progressHTML(null),/未查询/);
+  assert.doesNotMatch(context.progressHTML({total_remain:0,total_used:0,total_size:0}),/未查询|加载中/);
+  const html=context.card({auth_index:'a" onmouseover="bad',nickname:"<img src=x>",region:"cn",credits:{total_remain:0}});
+  assert.doesNotMatch(html,/<img src=x>/);assert.match(html,/&lt;img/);
+});
+
+test("credit composition distinguishes unknown balances and collapses consumed packages",()=>{
+  const {context,document,elements}=loadPanel();
+  vm.runInContext(`lastAccounts=[{auth_index:"known",nickname:"Known",credits:{total_remain:50,packages:[{name:"active",remain:50,size:100,cycle_end:"2060-10-18 12:00:00"},{name:"old",remain:100,size:100,cycle_end:"2000-01-01 00:00:00"}]}},{auth_index:"unknown",nickname:"Unknown"}];`,context);
+  document.getElementById("packageSort").value="expiry";
+  context.renderCreditComposition();
+  assert.match(elements.get("packagesMeta").textContent,/1 \/ 2/);
+  assert.match(elements.get("packageAccounts").innerHTML,/暂无积分快照/);
+  assert.match(elements.get("packageTable").innerHTML,/已用完 \/ 已过期 1/);
+  assert.doesNotMatch(elements.get("packageExpiry").innerHTML,/>150 积分/);
+});
+
+test("request speed uses generation time with the upstream 200ms fallback",()=>{
+  const {context}=loadPanel();
+  assert.equal(context.requestRate({latency_ms:2000,ttfb_ms:1000,output_tokens:100}),"100.0 tok/s");
+  assert.equal(context.requestRate({latency_ms:1000,ttfb_ms:900,output_tokens:100}),"100.0 tok/s");
+  assert.equal(context.requestRate({latency_ms:0,output_tokens:100}),"—");
+});
+
+test("usage changes dimension without re-fetch and escapes billing text",async()=>{
+  const {context,document,elements}=loadPanel();let calls=0;
+  context.api=async(path)=>{calls++;assert.match(path,/refresh=1/);return {days:7,accounts:1,total_credit:10,total_count:2,by_model:[{model:"<bad>",requests:2,credit:10}],by_client:[{client:"CLI",requests:2,credit:10}],by_day:[{day:"2026-10-18",count:2,credit:10}],recent:[]}};
+  await context.loadUsage(fakeElement());
+  assert.match(elements.get("usageDetail").innerHTML,/&lt;bad&gt;/);
+  context.setUsageDimension("client");assert.match(elements.get("usageDetail").innerHTML,/CLI/);
+  context.setUsageDimension("day");assert.match(elements.get("usageDetail").innerHTML,/2026-10-18/);
+  assert.equal(calls,1);
 });

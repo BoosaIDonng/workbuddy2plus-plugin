@@ -129,6 +129,9 @@ func handleClaimTrialWithCallback(req pluginapi.ManagementRequest, callbackID st
 		if !isGlobalDomain(sa.Auth.Domain) {
 			return map[string]any{"auth_index": authIndex, "error": "专家加油包仅适用于国际版账号"}
 		}
+		if strings.TrimSpace(sa.Account.EnterpriseID) != "" {
+			return map[string]any{"auth_index": authIndex, "error": "企业版账号不支持领取个人专家加油包"}
+		}
 		res, err := performTrialCallWithCallback(sa, callbackID)
 		out := map[string]any{"auth_index": authIndex, "nickname": sa.Account.Nickname}
 		if err != nil {

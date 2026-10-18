@@ -181,11 +181,15 @@ func expiringCredits(cr *creditsSummary, within time.Duration) int64 {
 	if cr == nil {
 		return 0
 	}
-	deadline := time.Now().Add(within)
+	now := time.Now()
+	deadline := now.Add(within)
 	var sum int64
 	for _, p := range cr.Packages {
-		end, err := time.ParseInLocation("2006-01-02 15:04:05", p.CycleEnd, wupstream.SoftRateResetLoc())
-		if err != nil || end.After(deadline) {
+		end, err := time.Parse(time.RFC3339, p.CycleEnd)
+		if err != nil {
+			end, err = time.ParseInLocation("2006-01-02 15:04:05", p.CycleEnd, wupstream.SoftRateResetLoc())
+		}
+		if err != nil || !end.After(now) || end.After(deadline) || p.Remain <= 0 {
 			continue
 		}
 		sum += p.Remain

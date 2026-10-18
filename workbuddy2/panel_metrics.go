@@ -217,7 +217,10 @@ func handleLedgerQuery(req pluginapi.ManagementRequest) (int, any) {
 // handleTasksQuery serves GET /tasks?limit=N — automated task history.
 func handleTasksQuery(req pluginapi.ManagementRequest) (int, any) {
 	limit := queryInt(req.Query, "limit", 100, 1, 500)
-	return http.StatusOK, map[string]any{"tasks": panelData.list(streamTasks, limit)}
+	return http.StatusOK, map[string]any{"tasks": panelData.list(streamTasks, limit),
+		"activity_running": activityRunning.Load(), "travel_running": travelRunning.Load(),
+		"activity_enabled": activityEnabled(), "travel_enabled": travelEnabled(),
+	}
 }
 
 // queryInt reads a bounded integer query parameter.

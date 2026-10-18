@@ -121,7 +121,7 @@ func TestGlobalModelsProbeV2First(t *testing.T) {
 
 	got := globalModelsClient(t, srv).FetchGlobalModels(globalAcct())
 
-	if len(calls) != 2 || !containsStr(calls, "/v3/config") || !containsStr(calls, "/v2/enterprises/personal/models") {
+	if len(calls) != 4 || !containsStr(calls, "/v3/config") || !containsStr(calls, "/v2/enterprises/personal/models") {
 		t.Fatalf("probe calls=%v want [/v3/config /v2/enterprises/personal/models] (v2-first, no console)", calls)
 	}
 	counts := map[string]int{}
@@ -156,7 +156,7 @@ func TestGlobalModelsProbeConsoleFallback(t *testing.T) {
 
 	got := globalModelsClient(t, srv).FetchGlobalModels(globalAcct())
 
-	if len(calls) != 3 ||
+	if len(calls) != 5 ||
 		!containsStr(calls, "/v3/config") ||
 		!containsStr(calls, "/v2/enterprises/personal/models") ||
 		!containsStr(calls, "/console/enterprises/personal/models") {

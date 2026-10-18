@@ -97,7 +97,7 @@ func cstDate(t time.Time) string {
 	return t.In(wupstream.SoftRateResetLoc()).Format("2006-01-02")
 }
 
-// runActivityTask reports chat activity for every usable CN account, then runs
+// runActivityTask reports chat activity for usable CN and Global accounts, then runs
 // the reward chain. Per-account failures never abort the sweep. Returns false
 // when another sweep is already in flight.
 func runActivityTask() bool {
@@ -107,7 +107,7 @@ func runActivityTask() bool {
 	}
 	defer activityRunning.Store(false)
 
-	accounts := cnAccounts()
+	accounts := personalTaskAccounts(true)
 	if len(accounts) == 0 {
 		return true
 	}
@@ -159,6 +159,9 @@ func reportActivityFor(acct *wauth.Auth) {
 // checkActivityStreak reads the streak back and warns when the report appears
 // to have been dropped silently.
 func checkActivityStreak(acct *wauth.Auth) {
+	if acct == nil || acct.IsGlobal() || strings.TrimSpace(acct.EnterpriseID) != "" {
+		return
+	}
 	days, err := wbClient.GrowthStreak(acct)
 	if err != nil {
 		log.Printf("WARN: activity %s: streak check failed: %v", accountLabel(acct), err)
@@ -176,7 +179,7 @@ func checkActivityStreak(acct *wauth.Auth) {
 // Idempotent per CST day; every step is best-effort and failures do not stop
 // the rest of the chain.
 func claimGrowthRewards(acct *wauth.Auth) {
-	if acct == nil || acct.IsGlobal() {
+	if acct == nil || acct.IsGlobal() || strings.TrimSpace(acct.EnterpriseID) != "" {
 		return // growth chain is CN-only (Global streak endpoint returns 500)
 	}
 	// Reserve the day up front: the chain below makes real credit grants, and
@@ -329,9 +332,10 @@ func claimGrowthLottery(acct *wauth.Auth) {
 }
 
 // cnAccounts returns the CN-realm accounts that can run growth tasks: enabled
-// and holding an access token. Global accounts are excluded (their streak
-// endpoint returns 500).
-func cnAccounts() []*wauth.Auth {
+// and holding an access token. Travel remains limited to personal CN accounts.
+func cnAccounts() []*wauth.Auth { return personalTaskAccounts(false) }
+
+func personalTaskAccounts(includeGlobal bool) []*wauth.Auth {
 	files, err := panelHostAuthList()
 	if err != nil {
 		return nil
@@ -346,7 +350,7 @@ func cnAccounts() []*wauth.Auth {
 			continue
 		}
 		a := wbAuth(nil, sa)
-		if a.UID == "" || a.AccessTokenValue() == "" || a.IsGlobal() {
+		if a.UID == "" || a.AccessTokenValue() == "" || strings.TrimSpace(a.EnterpriseID) != "" || (!includeGlobal && a.IsGlobal()) {
 			continue
 		}
 		a.Nickname = sa.Account.Nickname

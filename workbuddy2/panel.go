@@ -16,10 +16,13 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	wpool "github.com/sliverkiss/workbuddy2plus-plugin/internal/pool"
 )
 
 // wbAccount is one row of the dashboard.
 type wbAccount struct {
+	Enterprise     bool            `json:"enterprise,omitempty"`
+	PoolStatus     *wpool.Status   `json:"pool_status,omitempty"`
 	AuthIndex      string          `json:"auth_index"`
 	AuthID         string          `json:"auth_id,omitempty"`
 	Name           string          `json:"name"`
@@ -193,6 +196,10 @@ func buildDashboardExWithCallback(force, fetchCredits bool, callbackID string) m
 			acct.Nickname = sa.Account.Nickname
 			acct.UID = sa.Account.UID
 			acct.Region = accountRegion(sa)
+			acct.Enterprise = strings.TrimSpace(sa.Account.EnterpriseID) != ""
+			if status, ok := poolInstance().Status(acct.UID); ok {
+				acct.PoolStatus = &status
+			}
 			physicalDisabled := acct.Disabled
 			acct.ManualDisabled = manualDisabledForAuthUID(acct.UID)
 			if fetchCredits {

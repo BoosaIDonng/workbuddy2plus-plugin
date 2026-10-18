@@ -109,7 +109,7 @@ func TestPanelSearchesAndSortsVisibleAccounts(t *testing.T) {
 		`const view=accountsForFilter(accounts).filter(`, `return view.slice()`,
 		`return view.slice().sort(`,
 		`sortDirection=sortDirection==="original"?"desc":(sortDirection==="desc"?"asc":"original")`,
-		`accountsForView(lastAccounts).map(card).join("")`,
+		`view.map(card).join("")`,
 		`const scoped=accountsForFilter(all);`,
 	} {
 		if !strings.Contains(html, want) {

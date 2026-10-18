@@ -476,7 +476,7 @@ func TestModelRuntimeDifferentAuthIsolation(t *testing.T) {
 	if !concurrent {
 		t.Fatal("different auth WorkBuddy requests were serialized")
 	}
-	if cnCalls.Load() != 1 || globalCalls.Load() != 1 {
+	if cnCalls.Load() != 1 || globalCalls.Load() != 5 {
 		t.Fatalf("WorkBuddy calls: cn=%d global=%d", cnCalls.Load(), globalCalls.Load())
 	}
 	if gotCN.State != modelReady || len(gotCN.Models) != 1 || gotCN.Models[0].ID != "cn-model" {

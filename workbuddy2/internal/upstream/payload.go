@@ -53,12 +53,15 @@ func PrepareBodyOptWithEffortsAndDefault(src []byte, sanitize bool, efforts map[
 	//   - 翻译后删别名字段（上游 Go struct 未知字段宽松，但留着徒增 body 体积与
 	//     排障噪音）。
 	translateMaxCompletionTokens(obj)
+	clampGPTMinMaxTokens(obj)
 	// stream_options 仅当 body 未显式带时补 {include_usage: true}（D7）：
 	// 官方 CLI 流式必发该字段，上游据此在末帧返回 usage 用量；显式带则不覆盖。
 	if _, has := obj["stream_options"]; !has {
 		obj["stream_options"] = map[string]any{"include_usage": true}
 	}
 	normalizeToolChoice(obj)
+	normalizeToolPatterns(obj)
+	normalizeImageURL(obj)
 	normalizeRoles(obj)
 	// tool 配对两步（见 tool_pairing.go）：先重排再清理。所有模型一律执行（独立于
 	// deepseek-only 的 sanitize 开关）。这是「让请求通过」的安全网——不完整配对的
@@ -66,6 +69,7 @@ func PrepareBodyOptWithEffortsAndDefault(src []byte, sanitize bool, efforts map[
 	// 插在结果中间的非 tool 消息（Codex image_resize_notice）同样判配对断裂，
 	// 先 repack 挪后，再 cleanup 删孤儿，两侧同口径。
 	if msgs, ok := obj["messages"].([]any); ok {
+		msgs, _ = mergeAdjacentToolCalls(msgs)
 		msgs, _ = repackToolResultBlocks(msgs)
 		msgs, _ = cleanupOrphanToolCalls(msgs)
 		// 无改动时两步都返回原 slice，这里回写等于零操作；任一步重排/删除
@@ -304,5 +308,105 @@ func normalizeToolChoice(obj map[string]any) {
 		}
 	default:
 		delete(obj, "tool_choice")
+	}
+}
+
+const gptMinMaxTokens = 16
+
+func clampGPTMinMaxTokens(obj map[string]any) {
+	model, _ := obj["model"].(string)
+	if !strings.Contains(strings.ToLower(model), "gpt-") {
+		return
+	}
+	var v int64
+	switch n := obj["max_tokens"].(type) {
+	case float64:
+		v = int64(n)
+	case int64:
+		v = n
+	case int:
+		v = int64(n)
+	default:
+		return
+	}
+	if v < gptMinMaxTokens {
+		obj["max_tokens"] = int64(gptMinMaxTokens)
+		log.Printf("max_tokens clamped model=%s %d -> %d", model, v, gptMinMaxTokens)
+	}
+}
+
+func normalizeToolPatterns(obj map[string]any) {
+	rawTools, ok := obj["tools"].([]any)
+	if !ok {
+		return
+	}
+	for _, raw := range rawTools {
+		tool, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		// OpenAI 形态 tools[].function.parameters；裸 tools[].parameters 兼容。
+		if fn, ok := tool["function"].(map[string]any); ok {
+			unescapePatternLiteralEscapes(fn["parameters"])
+		}
+		unescapePatternLiteralEscapes(tool["parameters"])
+	}
+}
+
+func unescapePatternLiteralEscapes(node any) {
+	switch n := node.(type) {
+	case map[string]any:
+		if p, ok := n["pattern"].(string); ok && strings.Contains(p, `\_`) {
+			n["pattern"] = strings.ReplaceAll(p, `\_`, `_`)
+		}
+		if props, ok := n["patternProperties"].(map[string]any); ok {
+			rebuilt := false
+			fixed := make(map[string]any, len(props))
+			for k, v := range props {
+				if strings.Contains(k, `\_`) {
+					k = strings.ReplaceAll(k, `\_`, `_`)
+					rebuilt = true
+				}
+				fixed[k] = v
+			}
+			if rebuilt {
+				n["patternProperties"] = fixed
+			}
+		}
+		for _, v := range n {
+			unescapePatternLiteralEscapes(v)
+		}
+	case []any:
+		for _, v := range n {
+			unescapePatternLiteralEscapes(v)
+		}
+	}
+}
+
+func normalizeImageURL(obj map[string]any) {
+	msgs, ok := obj["messages"].([]any)
+	if !ok {
+		return
+	}
+	for _, rawMsg := range msgs {
+		msg, ok := rawMsg.(map[string]any)
+		if !ok {
+			continue
+		}
+		parts, ok := msg["content"].([]any)
+		if !ok {
+			continue
+		}
+		for _, rawPart := range parts {
+			part, ok := rawPart.(map[string]any)
+			if !ok || part["type"] != "image_url" {
+				continue
+			}
+			imageURL, ok := part["image_url"].(string)
+			if !ok || imageURL == "" {
+				continue
+			}
+			part["image_url"] = map[string]any{"url": imageURL}
+		}
 	}
 }
