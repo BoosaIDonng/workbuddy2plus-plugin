@@ -1,3 +1,13 @@
+# Local build outputs
 *.so
 *.h
+*.test
+bin/
 dist/
+coverage.out
+coverage.html
+
+# Python and macOS generated files
+__pycache__/
+*.py[cod]
+.DS_Store

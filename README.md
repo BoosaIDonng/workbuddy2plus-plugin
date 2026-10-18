@@ -238,6 +238,13 @@ plugins:
 
 错误统一返回 `{"error": "<脱敏消息>"}`。凭证、token、上游原始响应体不会出现在任何响应里。
 
+## 仓库目录
+
+- `workbuddy2/`：插件源码、面板、测试、构建文件与维护文档。
+- `registry.json`：本仓库 WorkBuddy 插件的分发登记信息。
+- `scripts/validate-registry.py`：登记表校验工具，在项目根目录执行 `python3 scripts/validate-registry.py`。
+- `dist/`、`bin/`、覆盖率文件和缓存是本地产物，已加入忽略规则；安装包统一从 Releases 下载。
+
 ## 开发
 
 需要 Go 1.26+（与 CPA 对齐）与 Node（跑面板测试）：
