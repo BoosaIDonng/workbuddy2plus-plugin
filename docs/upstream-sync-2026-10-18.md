@@ -2,7 +2,7 @@
 
 参考仓库：[linguo2625469/workbuddy2api-panel](https://github.com/linguo2625469/workbuddy2api-panel)。
 参考提交：[6b31db6](https://github.com/linguo2625469/workbuddy2api-panel/commit/6b31db6d045e985042620c819c3a938002e7b0b1)，2026-10-12；2026-10-18 经 GitHub API 确认 main 仍指向该提交。
-插件基线：GitHub `BoosaIDonng/workbuddy2plus-plugin` 的 v2.8.5（2089617）。适配后的插件源码直接在仓库根目录维护。
+插件基线：GitHub `BoosaIDonng/workbuddy2plus-plugin` 的 v2.8.5（2089617）。适配后的插件源码在本仓库维护，主包位于 `plugin/`。
 
 ## 已适配
 

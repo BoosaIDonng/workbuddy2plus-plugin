@@ -2,22 +2,23 @@
 
 GO ?= go
 NODE ?= node
+PYTHON ?= python3
 VERSION ?= $(shell cat VERSION 2>/dev/null || git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -X main.version=$(VERSION)
 
 # Default target: build the plugin for the current platform.
 build:
-	CGO_ENABLED=1 $(GO) build -buildmode=c-shared -ldflags "$(LDFLAGS)" -o workbuddy.so .
+	@mkdir -p dist
+	CGO_ENABLED=1 $(GO) build -buildmode=c-shared -ldflags "$(LDFLAGS)" -o dist/workbuddy.so ./plugin
 
 # Run local regression tests; test sources are excluded from Git.
 test:
-	@test -f panel.test.js || { echo "Local test files are required; they are not published to GitHub."; exit 1; }
-	$(GO) test -race -count=1 ./...
-	$(NODE) --test panel.test.js
+	@test -f _local/run-tests.py || { echo "Local test files are required; they are not published to GitHub."; exit 1; }
+	$(PYTHON) _local/run-tests.py "$(GO)" "$(NODE)"
 
 # Lint everything (requires gofmt + go vet; staticcheck/gocritic/unparam optional).
 lint:
-	@test -z "$$($(GO)fmt -l .)" || ($(GO)fmt -l . && exit 1)
+	@test -z "$$($(GO)fmt -l plugin internal)" || ($(GO)fmt -l plugin internal && exit 1)
 	$(GO) vet ./...
 	@if command -v staticcheck >/dev/null 2>&1; then staticcheck ./...; fi
 	@if command -v gocritic >/dev/null 2>&1; then gocritic check ./...; fi
@@ -36,7 +37,7 @@ release: clean
 	  os=$${target%/*}; arch=$${target#*/}; \
 	  out=dist/workbuddy_$(VERSION)_$${os}_$${arch}; \
 	  mkdir -p $$out; \
-	  GOOS=$$os GOARCH=$$arch CGO_ENABLED=1 $(GO) build -buildmode=c-shared -ldflags "$(LDFLAGS)" -o $$out/workbuddy.so .; \
+	  GOOS=$$os GOARCH=$$arch CGO_ENABLED=1 $(GO) build -buildmode=c-shared -ldflags "$(LDFLAGS)" -o $$out/workbuddy.so ./plugin; \
 	  test -f $$out/workbuddy.so; \
 	  cp README.md LICENSE $$out/; \
 	  cd dist && zip -qr workbuddy_$(VERSION)_$${os}_$${arch}.zip workbuddy_$(VERSION)_$${os}_$${arch} && cd ..; \

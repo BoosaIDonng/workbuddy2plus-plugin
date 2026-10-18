@@ -242,21 +242,22 @@ plugins:
 
 仓库根目录即插件项目，可直接执行构建命令：
 
-- `*.go`、`panel.html`：插件后端与内嵌管理面板。
+- `plugin/`：插件主代码与内嵌管理面板。
 - `internal/`：账号池、会话和上游兼容模块。
+- `_local/`：本地测试、测试数据和运行工具，整个目录不提交 GitHub。
 - `go.mod`、`go.sum`、`Makefile`、`VERSION`：依赖与构建配置。
 - `docs/`、`README.md`、`CHANGELOG.md`、`LICENSE`：维护文档与许可。
 
-构建产物及缓存不纳入版本控制；安装包从 Releases 下载。
+构建产物统一输出到 `dist/`，缓存和构建产物不纳入版本控制；安装包从 Releases 下载。
 
 测试源码和测试数据仅在本地保存，已加入 `.gitignore`，不提交到 GitHub，也不放入发布安装包。部署只需要 Release 中对应架构的 `workbuddy.so`。
 
 ## 开发
 
-需要 Go 1.26+（与 CPA 对齐）与 Node（跑面板测试）：
+构建需要 Go 1.26+（与 CPA 对齐）和 C 编译器；本地回归还需要 Python 3 与 Node。
 
 ```bash
-make build     # 编译当前平台的插件
+make build     # 编译到 dist/workbuddy.so
 make test      # 本地回归测试，需本地保留测试文件
 make lint      # gofmt + go vet
 make release   # 交叉编译 linux-amd64 + linux-arm64 到 dist/
@@ -267,7 +268,7 @@ Windows 上经 Git Bash 构建需要路径转换绕行：
 ```bash
 MSYS_NO_PATHCONV=1 docker run --rm \
   -v "//d/路径/workbuddy2plus-plugin":/src -w //src golang:1.26-bookworm \
-  sh -c 'CGO_ENABLED=1 go build -buildmode=c-shared -o workbuddy.so .'
+  sh -c 'CGO_ENABLED=1 go build -buildmode=c-shared -o dist/workbuddy.so ./plugin'
 ```
 
 模块地图见 [docs/architecture.md](docs/architecture.md)，完整工作流见 [docs/development.md](docs/development.md)，更新历史见 [CHANGELOG](CHANGELOG.md)。

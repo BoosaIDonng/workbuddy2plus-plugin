@@ -6,6 +6,7 @@ Local build, test, debug, and release workflow for the workbuddy plugin.
 
 - Go 1.26+ (matches CPA's `go.mod`)
 - CGO enabled (required for `-buildmode=c-shared`)
+- Python 3 and Node.js for the local regression runner
 - For cross-compilation: platform-specific C toolchains (e.g. `aarch64-linux-gnu-gcc` for linux/arm64, `osxcross` for darwin)
 
 ## Build
@@ -15,27 +16,25 @@ Local build, test, debug, and release workflow for the workbuddy plugin.
 make build
 
 # Or explicitly
-CGO_ENABLED=1 go build -buildmode=c-shared -ldflags "-X main.version=$(git describe --tags --always)" -o workbuddy.so .
+mkdir -p dist
+CGO_ENABLED=1 go build -buildmode=c-shared -ldflags "-X main.version=$(git describe --tags --always)" -o dist/workbuddy.so ./plugin
 ```
 
-Output: `workbuddy.so` (and `workbuddy.h` as a side effect).
+Output: `dist/workbuddy.so` (and `dist/workbuddy.h` as a side effect).
 
 ## Test
 
 Regression test sources and fixtures are maintained locally and excluded from
-GitHub by `.gitignore`. The commands below require those local files; a fresh
-clone contains the buildable plugin sources only.
+GitHub by `.gitignore`. They live together under `_local/tests/`; `make test`
+uses `_local/run-tests.py` to assemble a temporary test workspace and removes it
+afterwards. A fresh clone contains the buildable plugin sources only.
 
 ```bash
 # All tests with race detector
 make test
 
 # Or explicitly
-go test -race -count=1 ./...
-
-# Coverage
-go test -cover ./...
-go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
+python3 _local/run-tests.py
 ```
 
 The local regression suite covers:
@@ -75,7 +74,7 @@ iteration loop:
 make build
 
 # 2. Copy to CPA's plugin dir (adjust path to your CPA install)
-cp workbuddy.so /path/to/cliproxyapi/plugins/
+cp dist/workbuddy.so /path/to/cliproxyapi/plugins/
 
 # 3. Restart CPA
 docker restart cpa-manager-plus-cli-proxy-api-1
@@ -129,4 +128,4 @@ Cross-compilation notes:
 - Comments in English (community standard); user-visible strings may be Chinese
 - No new dependencies without discussion — `go.mod` currently only has CPA SDK
 - Wire formats are sacred: never change `pluginapi` / `pluginabi` field names
-- Every commit must keep `go test -race ./...` green
+- Local changes should keep `make test` green when local regression files are available

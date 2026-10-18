@@ -10,6 +10,7 @@ coverage.html
 *.prof
 
 # Regression tests are kept locally, not published to GitHub
+/_local/
 *_test.go
 *.test.js
 testdata/

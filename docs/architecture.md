@@ -1,7 +1,7 @@
 # WorkBuddy Plugin Architecture
 
 Module map and data flow for the workbuddy plugin. The plugin is a single
-`package main` compiled as a c-shared `.so`, loaded by CPA at startup and
+`package main` under `plugin/`, compiled as a c-shared `.so`, loaded by CPA at startup and
 driven via the `pluginabi` RPC interface.
 
 ## Capability surface (declared in `wbRegistration`)
