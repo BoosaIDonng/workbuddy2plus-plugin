@@ -6,6 +6,21 @@ bin/
 dist/
 coverage.out
 coverage.html
+*.log
+*.prof
+
+# Local credentials, configuration and runtime state
+.env
+.env.*
+!.env.example
+!.env.sample
+/config.yaml
+/config.yml
+/config.local.*
+/auths/
+/data/
+/backups/
+/tmp/
 
 # Python and macOS generated files
 __pycache__/

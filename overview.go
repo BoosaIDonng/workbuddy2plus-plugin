@@ -1,8 +1,7 @@
 // overview.go builds the panel overview aggregate for GET /overview.
 // Data sources are the existing dashboard build (accounts, credits summary)
-// and host auth state — no additional upstream calls. Mirrors the GUI
-// Dashboard's stat tiles within the plugin's data surface (see
-// docs/panel-migration-api-contract.md §2.1).
+// and host auth state — no additional upstream calls. The management API
+// entry points are documented in README.md.
 package main
 
 import (

@@ -250,6 +250,8 @@ plugins:
 
 构建产物及缓存不纳入版本控制；安装包从 Releases 下载。
 
+回归测试属于源码仓库的维护文件：`*_test.go` 不参与插件编译，`panel.test.js` 和 `testdata/` 也不放入发布安装包。部署只需要 Release 中对应架构的 `workbuddy.so`。
+
 ## 开发
 
 需要 Go 1.26+（与 CPA 对齐）与 Node（跑面板测试）：
