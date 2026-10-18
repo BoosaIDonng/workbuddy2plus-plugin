@@ -9,6 +9,11 @@ coverage.html
 *.log
 *.prof
 
+# Regression tests are kept locally, not published to GitHub
+*_test.go
+*.test.js
+testdata/
+
 # Local credentials, configuration and runtime state
 .env
 .env.*

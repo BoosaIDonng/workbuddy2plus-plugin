@@ -22,6 +22,10 @@ Output: `workbuddy.so` (and `workbuddy.h` as a side effect).
 
 ## Test
 
+Regression test sources and fixtures are maintained locally and excluded from
+GitHub by `.gitignore`. The commands below require those local files; a fresh
+clone contains the buildable plugin sources only.
+
 ```bash
 # All tests with race detector
 make test
@@ -34,7 +38,7 @@ go test -cover ./...
 go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
 ```
 
-The test suite (115 tests at the time of writing) covers:
+The local regression suite covers:
 
 - Cache merge logic (credits / plan / checkin never wiped on fast paths)
 - Alias reverse resolution (client alias → upstream model id)

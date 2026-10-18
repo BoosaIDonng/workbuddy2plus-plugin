@@ -9,8 +9,9 @@ LDFLAGS := -X main.version=$(VERSION)
 build:
 	CGO_ENABLED=1 $(GO) build -buildmode=c-shared -ldflags "$(LDFLAGS)" -o workbuddy.so .
 
-# Run all tests with race detector.
+# Run local regression tests; test sources are excluded from Git.
 test:
+	@test -f panel.test.js || { echo "Local test files are required; they are not published to GitHub."; exit 1; }
 	$(GO) test -race -count=1 ./...
 	$(NODE) --test panel.test.js
 

@@ -244,13 +244,12 @@ plugins:
 
 - `*.go`、`panel.html`：插件后端与内嵌管理面板。
 - `internal/`：账号池、会话和上游兼容模块。
-- `*_test.go`、`panel.test.js`：回归测试。
 - `go.mod`、`go.sum`、`Makefile`、`VERSION`：依赖与构建配置。
 - `docs/`、`README.md`、`CHANGELOG.md`、`LICENSE`：维护文档与许可。
 
 构建产物及缓存不纳入版本控制；安装包从 Releases 下载。
 
-回归测试属于源码仓库的维护文件：`*_test.go` 不参与插件编译，`panel.test.js` 和 `testdata/` 也不放入发布安装包。部署只需要 Release 中对应架构的 `workbuddy.so`。
+测试源码和测试数据仅在本地保存，已加入 `.gitignore`，不提交到 GitHub，也不放入发布安装包。部署只需要 Release 中对应架构的 `workbuddy.so`。
 
 ## 开发
 
@@ -258,7 +257,7 @@ plugins:
 
 ```bash
 make build     # 编译当前平台的插件
-make test      # 全量测试（含竞态检测）+ 面板测试
+make test      # 本地回归测试，需本地保留测试文件
 make lint      # gofmt + go vet
 make release   # 交叉编译 linux-amd64 + linux-arm64 到 dist/
 ```
