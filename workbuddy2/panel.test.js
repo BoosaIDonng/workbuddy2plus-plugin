@@ -503,6 +503,12 @@ test("expiry uses China time, exact expiry, and keeps unknown dates unknown", ()
   assert.equal(rows[0].expired,true);
   assert.equal(rows[1].expired,false);
   assert.equal(rows[2].end,null);
+  const html=context.expiryHTML({packages:[
+    {name:"expired-within-a-day",remain:20,size:20,cycle_end:new Date(Date.now()-3600000).toISOString()},
+    {name:"future-package",remain:30,size:30,cycle_end:new Date(Date.now()+3600000).toISOString()}
+  ]});
+  assert.doesNotMatch(html,/expired-within-a-day/);
+  assert.match(html,/future-package/);
 });
 
 test("model filters combine realm, capability and tier without losing zero pricing",async()=>{

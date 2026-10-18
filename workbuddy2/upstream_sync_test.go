@@ -1,10 +1,90 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 )
+
+func markupStreamFixture(t *testing.T) (string, []byte) {
+	t.Helper()
+	const markup = `<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name="run"></｜｜DSML｜｜ invoke></｜｜DSML｜｜ calls>`
+	var stream strings.Builder
+	for _, part := range []string{"answer " + markup[:18], markup[18:]} {
+		raw, err := json.Marshal(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"content": part}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stream.WriteString("data: " + string(raw) + "\n\n")
+	}
+	stream.WriteString("data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+	return stream.String(), []byte(`{"tools":[{"type":"function","function":{"name":"run"}}]}`)
+}
+
+func TestCPASynchronousMarkupBridges(t *testing.T) {
+	stream, body := markupStreamFixture(t)
+	for _, framed := range []bool{false, true} {
+		chunks, err := aggregateSSEWithCollector(strings.NewReader(stream), framed, nil, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wire strings.Builder
+		for _, chunk := range chunks {
+			payload := string(chunk.Payload)
+			if framed && !strings.HasPrefix(payload, "data: ") {
+				t.Fatalf("missing SSE framing: %q", payload)
+			}
+			wire.WriteString(payload)
+		}
+		if got := wire.String(); strings.Contains(got, "DSML") || !strings.Contains(got, `"name":"run"`) || !strings.Contains(got, `"finish_reason":"tool_calls"`) || !strings.Contains(got, `"content":"answer "`) {
+			t.Fatalf("framed=%v, unexpected stream: %s", framed, got)
+		}
+	}
+	result, err := wbAggregate(strings.NewReader(stream), "test-model", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(result); strings.Contains(got, "DSML") || !strings.Contains(got, `"name":"run"`) || !strings.Contains(got, `"finish_reason":"tool_calls"`) {
+		t.Fatalf("unexpected aggregate: %s", got)
+	}
+}
+
+func TestCPAAsyncMarkupBridge(t *testing.T) {
+	stream, body := markupStreamFixture(t)
+	calls := recordStreamHostCalls(t, nil)
+	setPumpHTTPClient(t, io.NopCloser(strings.NewReader(stream)))
+	req, err := http.NewRequest(http.MethodPost, "https://upstream.invalid/chat", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pumpUpstreamStream(req, nil, "markup-stream", false, "model", "model", "", time.Now(), "", "")
+	var wire strings.Builder
+	for _, call := range *calls {
+		if call.method == pluginabi.MethodHostStreamEmit {
+			var emit struct {
+				Payload []byte `json:"payload"`
+			}
+			if err := json.Unmarshal(call.body, &emit); err != nil {
+				t.Fatal(err)
+			}
+			wire.Write(emit.Payload)
+		}
+	}
+	if got := wire.String(); strings.Contains(got, "DSML") || !strings.Contains(got, `"name":"run"`) || !strings.Contains(got, `"finish_reason":"tool_calls"`) {
+		t.Fatalf("unexpected async stream: %s", got)
+	}
+	if errors := nativeStreamErrors(t, *calls); len(errors) != 0 {
+		t.Fatalf("stream errors: %v", errors)
+	}
+	if count := streamCloseCallCount(*calls); count != 1 {
+		t.Fatalf("close count=%d", count)
+	}
+}
 
 func TestGlobalCatalogUnionKeepsDesktopMetadataAndHostCallback(t *testing.T) {
 	sa := syntheticStoredAuth(t, workBuddyRealmGlobal)

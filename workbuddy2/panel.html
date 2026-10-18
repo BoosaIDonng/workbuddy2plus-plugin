@@ -1828,7 +1828,7 @@ function expiryHTML(cr){
     let label="-", cls="expiry-mut", days=null;
     if(end!==null){
       days=Math.ceil((end-now)/86400000);
-      if(days<0){label="已过期";cls="expiry-err"}
+      if(end<=now){label="已过期";cls="expiry-err"}
       else if(days<=3){label=days+" 天";cls="expiry-err"}
       else if(days<=7){label=days+" 天";cls="expiry-warn"}
       else {label=days+" 天";cls="expiry-ok"}
@@ -1840,7 +1840,7 @@ function expiryHTML(cr){
     if(a.days!==null&&b.days!==null&&a.end!==b.end) return a.end-b.end;
     return a.index-b.index;
   });
-  const active=items.filter(item=>item.days===null||item.days>=0);
+  const active=items.filter(item=>item.end===null||item.end>now);
   if(!active.length) return "";
   const urgent=active.filter(item=>item.days!==null&&item.days<=7);
   const visible=urgent.length?urgent:active.slice(0,3);

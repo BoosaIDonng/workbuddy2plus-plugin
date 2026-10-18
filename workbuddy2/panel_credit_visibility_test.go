@@ -156,8 +156,16 @@ func TestOverviewReportsCheckinCounts(t *testing.T) {
 			t.Errorf("overview.go: missing %s", want)
 		}
 	}
-	// An unfetched account has no snapshot and must not count as "not signed in".
-	if !strings.Contains(src, "if a.Checkin != nil {") {
-		t.Error("check-in counts must skip accounts with no snapshot")
+	// Count actual personal CN snapshots; neither missing nor unsupported
+	// snapshots may inflate the denominator.
+	ov := buildOverviewFromAccounts([]wbAccount{
+		{Region: "cn", Checkin: &checkinSummary{TodayCheckedIn: true}},
+		{Region: "cn", Checkin: &checkinSummary{}},
+		{Region: "cn"},
+		{Region: "global", Checkin: &checkinSummary{TodayCheckedIn: true}},
+		{Region: "cn", Enterprise: true, Checkin: &checkinSummary{TodayCheckedIn: true}},
+	}, nil)
+	if ov.CheckinKnown != 2 || ov.CheckedIn != 1 {
+		t.Fatalf("check-in counts: known=%d checked=%d, want 2/1", ov.CheckinKnown, ov.CheckedIn)
 	}
 }

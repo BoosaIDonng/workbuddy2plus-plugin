@@ -6,6 +6,23 @@
 > 上游 `Sliverkiss/cpa-plugin` 已于 v0.9.3 停止维护。本仓库把
 > [workbuddy2api](https://github.com/Sliverkiss/workbuddy2api) 更优秀的核心（SSE 规整、加权账号池、成长任务）移植进插件形态，并独立继续开发。
 
+## 当前版本：v2.8.6
+
+[发布说明](https://github.com/BoosaIDonng/workbuddy2plus-plugin/releases/tag/v2.8.6) · [更新历史](workbuddy2/CHANGELOG.md) · [本轮上游同步清单](workbuddy2/docs/upstream-sync-2026-10-18.md)
+
+- **面板**：紧凑账号表格、统一模型与档位列表、积分到期提醒、模型限流台账、日志搜索。
+- **兼容修复**：空工具名过滤、原生工具标记还原、GPT 参数修正、国际版模型目录合并与会话缓存键回退。
+- **账号逻辑**：优先使用真实积分到期时间，国际版支持活跃上报，企业账号跳过不支持的个人任务。
+- **CPA 接入**：账号凭证、鉴权、密钥与请求分发保持 CPA 插件机制。
+
+| 系统架构 | 下载 |
+| --- | --- |
+| Linux x86_64 / amd64 | [workbuddy-v2.8.6-linux-x86_64.zip](https://github.com/BoosaIDonng/workbuddy2plus-plugin/releases/download/v2.8.6/workbuddy-v2.8.6-linux-x86_64.zip) |
+| Linux AArch64 / arm64 | [workbuddy-v2.8.6-linux-aarch64.zip](https://github.com/BoosaIDonng/workbuddy2plus-plugin/releases/download/v2.8.6/workbuddy-v2.8.6-linux-aarch64.zip) |
+| SHA256 校验文件 | [SHA256SUMS](https://github.com/BoosaIDonng/workbuddy2plus-plugin/releases/download/v2.8.6/SHA256SUMS) |
+
+升级时下载对应架构的包，替换 CPA 插件目录中的 `workbuddy.so`，再重启 CPA。保留现有凭证与配置；同一插件 ID 只保留一份有效文件。
+
 ## 为什么要二改
 
 上游插件的执行器会产生「对话莫名中断 / 模型不思考」这类问题，根因是它的 SSE 管线会丢帧和乱序。本仓库把那套管线整体换成 workbuddy2api 的逐帧规整器：
@@ -24,7 +41,7 @@
 - **OAuth 登录** —— 多账号 `workbuddy-<uid>.json` 凭证文件，经宿主的 `host.auth.save` 写入。国内版与国际版共用一个插件、一个配置块。登录在 CPA 自己的界面完成；面板负责导入凭证，不自带登录流程。
 - **动态模型目录** —— 从 WorkBuddy 发现每个账号的可用模型并按账号缓存，缺失的元数据由 [models.dev](https://models.dev) 补齐。可选 `models` 列表可完全替代自动发现。宿主侧的 `oauth-model-alias` / `oauth-excluded-models` 依然生效。
 - **流式执行器** —— 兼容 OpenAI 的对话补全接口，流式（经 `host.stream.emit` 输出真实 SSE）与非流式（把 SSE 折叠成单个 completion）都支持。内置 `tool_choice` 归一化、Claude Code 模板清理、按 realm 注入系统消息、`prompt_cache_key` 注入。
-- **Token 计数** —— 已实现 `executor.count_tokens`。
+- **Token 统计** —— 展示上游响应的 token 用量；上游没有独立计数接口，`executor.count_tokens` 返回不支持。
 
 ### 账号池与调度
 
@@ -38,10 +55,10 @@
 
 | 任务 | 时间（本地） | 做什么 |
 |---|---|---|
-| **每日签到** | 09:00、21:00 | 国内版账号签到，随后跑生命周期对账 |
+| **每日签到** | 09:00、21:00 | 国内版个人账号签到，随后跑生命周期对账 |
 | **Token 保活** | 22:00 | 刷新 access token，避免 Keycloak 离线会话过期 |
-| **活跃地图** | 10:00 | 每账号发 5 条活跃上报，回读连登天数自检，再跑奖励链（礼物/补偿包 → 补签卡 → 连登档位领取 → 抽奖） |
-| **猫猫旅行** | 09:00、21:00 | 无猫则领养，否则推进一趟旅行（idle 派出、arrived 领奖） |
+| **活跃地图** | 10:00 | 国内及国际版个人账号发 5 条活跃上报；国内版再回读连登天数并跑奖励链（礼物/补偿包 → 补签卡 → 连登档位领取 → 抽奖） |
+| **猫猫旅行** | 09:00、21:00 | 国内版个人账号无猫则领养，否则推进一趟旅行（idle 派出、arrived 领奖） |
 
 每类任务都可单独开关（`checkin_auto`、`token_keepalive`、`activity_auto`、`travel_auto`），也可在面板手动触发。两个耗时扫描带 in-flight 守卫，重复点击返回 `409`，不会把上报风暴跑两遍。
 
