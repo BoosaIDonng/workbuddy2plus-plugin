@@ -8,7 +8,7 @@
 
 ## 当前版本：v2.8.6
 
-[发布说明](https://github.com/BoosaIDonng/workbuddy2plus-plugin/releases/tag/v2.8.6) · [更新历史](workbuddy2/CHANGELOG.md) · [本轮上游同步清单](workbuddy2/docs/upstream-sync-2026-10-18.md)
+[发布说明](https://github.com/BoosaIDonng/workbuddy2plus-plugin/releases/tag/v2.8.6) · [更新历史](CHANGELOG.md) · [本轮上游同步清单](docs/upstream-sync-2026-10-18.md)
 
 - **面板**：紧凑账号表格、统一模型与档位列表、积分到期提醒、模型限流台账、日志搜索。
 - **兼容修复**：空工具名过滤、原生工具标记还原、GPT 参数修正、国际版模型目录合并与会话缓存键回退。
@@ -86,7 +86,7 @@
 - **配置** —— 自动化开关、保活状态、屏蔽词、CPA 接入信息。
 - **运行日志** —— 模型、别名、状态码、TTFB、耗时、输入 / 输出 token、输出速率与脱敏错误详情，支持搜索与状态筛选。
 
-本轮参考 [workbuddy2api-panel](https://github.com/linguo2625469/workbuddy2api-panel) 截至 2026-10-12 的代码，适配记录见[同步清单](workbuddy2/docs/upstream-sync-2026-10-18.md)。首屏读取已有积分快照，进入积分构成页或手动刷新时再获取缺失数据。
+本轮参考 [workbuddy2api-panel](https://github.com/linguo2625469/workbuddy2api-panel) 截至 2026-10-12 的代码，适配记录见[同步清单](docs/upstream-sync-2026-10-18.md)。首屏读取已有积分快照，进入积分构成页或手动刷新时再获取缺失数据。
 面板由 CPA 同源提供，从同源 `localStorage`（或 `?key=` 参数）读取宿主的管理密钥并转发。**插件自身不校验任何密钥** —— 鉴权完全由 CPA 宿主负责。
 
 ## 快速开始
@@ -240,10 +240,15 @@ plugins:
 
 ## 仓库目录
 
-- `workbuddy2/`：插件源码、面板、测试、构建文件与维护文档。
-- `registry.json`：本仓库 WorkBuddy 插件的分发登记信息。
-- `scripts/validate-registry.py`：登记表校验工具，在项目根目录执行 `python3 scripts/validate-registry.py`。
-- `dist/`、`bin/`、覆盖率文件和缓存是本地产物，已加入忽略规则；安装包统一从 Releases 下载。
+仓库根目录即插件项目，可直接执行构建命令：
+
+- `*.go`、`panel.html`：插件后端与内嵌管理面板。
+- `internal/`：账号池、会话和上游兼容模块。
+- `*_test.go`、`panel.test.js`：回归测试。
+- `go.mod`、`go.sum`、`Makefile`、`VERSION`：依赖与构建配置。
+- `docs/`、`README.md`、`CHANGELOG.md`、`LICENSE`：维护文档与许可。
+
+构建产物及缓存不纳入版本控制；安装包从 Releases 下载。
 
 ## 开发
 
@@ -260,11 +265,11 @@ Windows 上经 Git Bash 构建需要路径转换绕行：
 
 ```bash
 MSYS_NO_PATHCONV=1 docker run --rm \
-  -v "//d/路径/workbuddy2":/src -w //src golang:1.26-bookworm \
+  -v "//d/路径/workbuddy2plus-plugin":/src -w //src golang:1.26-bookworm \
   sh -c 'CGO_ENABLED=1 go build -buildmode=c-shared -o workbuddy.so .'
 ```
 
-模块地图见 [docs/architecture.md](workbuddy2/docs/architecture.md)，完整工作流见 [docs/development.md](workbuddy2/docs/development.md)，更新历史见 [CHANGELOG](workbuddy2/CHANGELOG.md)。
+模块地图见 [docs/architecture.md](docs/architecture.md)，完整工作流见 [docs/development.md](docs/development.md)，更新历史见 [CHANGELOG](CHANGELOG.md)。
 
 ## 兼容性
 
@@ -273,4 +278,4 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 
 ## 许可
 
-MIT —— 见 [LICENSE](workbuddy2/LICENSE)。上游插件版权归 Sliverkiss；本二改部分的修改以相同条款发布。
+MIT —— 见 [LICENSE](LICENSE)。上游插件版权归 Sliverkiss；本二改部分的修改以相同条款发布。
