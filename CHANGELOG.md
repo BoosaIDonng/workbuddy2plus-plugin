@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-21 — 停止维护
+
+- 参考 [workbuddy2api-panel 的停止维护声明](https://github.com/linguo2625469/workbuddy2api-panel/blob/73a7560efc7a88ebd9865db4c71ae7f6d85859f8/README.md)，本插件自即日起停止维护。
+- 不再新增功能、修复缺陷、跟进上游变化或处理新的 Issue / PR。
+- v2.8.6 为最终功能版本；保留已有源码和安装包供参考，不承诺持续可用。
+- 此次只发布公告，不修改插件运行逻辑、版本号或 MIT 许可证。
+
 ## 2.8.6 - 2026-10-18
 
 ### 面板与上游兼容逻辑同步

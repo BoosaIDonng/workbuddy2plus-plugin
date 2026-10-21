@@ -1,12 +1,23 @@
-# WorkBuddy —— CLIProxyAPI 插件（二改增强版）
+# WorkBuddy —— CLIProxyAPI 插件（已停止维护）
+
+> [!IMPORTANT]
+> **本项目已停止维护（2026-10-21）。** 后续不再更新功能、修复缺陷、适配上游变化或处理新的 Issue / PR。
+>
+> 参考项目 [workbuddy2api-panel 已宣布停更](https://github.com/linguo2625469/workbuddy2api-panel/blob/73a7560efc7a88ebd9865db4c71ae7f6d85859f8/README.md)。其维护者指出非官方访问限制增多、维护投入不足及批量账号和商业转售滥用等问题。本插件同样依赖相关非官方接口，基于后续兼容性与稳定性无法持续保障的情况，决定随之停止维护。
+>
+> **v2.8.6 为最终功能版本。** 已有源码和安装包保留供参考，不承诺旧版本持续可用。接口限制变化可能导致失效，非官方访问也可能带来账号限制风险。
+>
+> [停止维护公告](https://github.com/BoosaIDonng/workbuddy2plus-plugin/releases/tag/maintenance-ended-2026-10-21)
+
+以下为最终版本的历史功能与使用文档。
 
 把**腾讯 CodeBuddy**（`www.codebuddy.cn` 国内版 / `workbuddy.ai` 国际版）作为 OAuth 提供商接入 [CLIProxyAPI（CPA）](https://github.com/router-for-me/CLIProxyAPI) 的原生插件：按账号动态发现模型、完整流式执行、积分感知的账号调度、四类每日自动化任务，以及内置的七页管理面板。
 
 > **本项目是二改（second-development）版本，不是上游插件。**
 > 上游 `Sliverkiss/cpa-plugin` 已于 v0.9.3 停止维护。本仓库把
-> [workbuddy2api](https://github.com/Sliverkiss/workbuddy2api) 更优秀的核心（SSE 规整、加权账号池、成长任务）移植进插件形态，并独立继续开发。
+> [workbuddy2api](https://github.com/Sliverkiss/workbuddy2api) 更优秀的核心（SSE 规整、加权账号池、成长任务）移植进插件形态，此前作为 CPA 插件独立维护，现已停止维护。
 
-## 当前版本：v2.8.6
+## 最终功能版本：v2.8.6
 
 [发布说明](https://github.com/BoosaIDonng/workbuddy2plus-plugin/releases/tag/v2.8.6) · [更新历史](CHANGELOG.md) · [本轮上游同步清单](docs/upstream-sync-2026-10-18.md)
 
